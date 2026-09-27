@@ -2950,6 +2950,9 @@
 
   function startRun() { newCampaign(); startNight(); }
   function startNight() {
+    // a mark only counts once you bring it home: if you died on the way back, it is lost again
+    if (RUN.needReturn) { RUN.clueIdx = Math.max(0, RUN.clueIdx - 1); RUN.needReturn = false; }
+    RUN.nightStart = RUN.clueIdx;
     newGame();
     S.state = 'play';
     S.seq = { phase: 'title', t: 0, n: 0 };
@@ -3030,8 +3033,12 @@
     S.p.hp = 0;
     setMusicGain(0, 1.5); SFX.dead();
     const lost = Math.floor(S.nightScrap / 2);
+    const lostMark = RUN.nightStart !== undefined && RUN.clueIdx > RUN.nightStart;
+    if (lostMark) RUN.clueIdx = RUN.nightStart;
+    RUN.needReturn = false;
     RUN.scrap = Math.max(0, RUN.scrap - lost); saveRun(); saveMeta();
-    showOver('Has caído', 'En el refugio, Marco no suelta la radio: «¿Me recibes? ¿Sigues ahí…?»', lost ? `Pierdes ${lost} de la chatarra que llevabas encima. Lo demás sigue en el refugio.` : 'Lo que guardaste en el refugio sigue ahí.', true);
+    const detail = (lost ? `Pierdes ${lost} de la chatarra que llevabas encima. Lo demás sigue en el refugio.` : 'Lo que guardaste en el refugio sigue ahí.') + (lostMark ? ' La marca de Lucía se perdió contigo: tendrás que volver a encontrarla.' : '');
+    showOver('Has caído', 'En el refugio, Marco no suelta la radio: «¿Me recibes? ¿Sigues ahí…?»', detail, true);
   }
   function ending() {
     S.hospitalReached = true; META.hospital = 1; checkAch(); saveMeta();
