@@ -638,6 +638,8 @@
     swell() { if (!canSfx()) return; const t = now(); tone({ t0: t, f: 180, to: 520, dur: 0.85, type: 'sawtooth', gain: 0.1, lp: 900 }); for (let k = 0; k < 4; k++) tone({ t0: t + k * 0.2, f: 880 + k * 120, dur: 0.06, type: 'square', gain: 0.03 }); },
     hiss() { if (!canSfx() || !throttle('hiss', 300)) return; noise({ dur: 0.45, f: 5200, type: 'bandpass', q: 2, gain: 0.18, attack: 0.05 }); },
     pounce() { if (!canSfx()) return; tone({ f: 760, to: 380, dur: 0.3, type: 'sawtooth', gain: 0.08, lp: 3000, vib: [30, 40] }); noise({ dur: 0.25, f: 2500, type: 'bandpass', q: 1, gain: 0.16 }); },
+    alarm() { if (!canSfx()) return; const t = now(); [0, 0.45, 0.85, 1.15, 1.4, 1.6].forEach(d => { tone({ t0: t + d, f: 1480, dur: 0.09, type: 'square', gain: 0.07, lp: 4000 }); tone({ t0: t + d, f: 740, dur: 0.09, type: 'square', gain: 0.04 }); }); },
+    fireRush() { if (!canSfx()) return; const t = now(); noise({ t0: t, dur: 1.1, f: 300, to: 3500, type: 'bandpass', q: 0.8, gain: 0.7, attack: 0.05, rev: 0.4 }); tone({ t0: t, f: 90, to: 40, dur: 0.9, type: 'sawtooth', gain: 0.25, lp: 500 }); for (let k = 0; k < 10; k++) noise({ t0: t + k * 0.07, dur: 0.03, f: rand(1500, 4000), type: 'highpass', gain: 0.2 }); },
     heart() { if (!canSfx()) return; const t = now(); tone({ t0: t, f: 62, to: 42, dur: 0.13, gain: 0.55 }); tone({ t0: t + 0.19, f: 58, to: 40, dur: 0.12, gain: 0.35 }); },
     splat() { if (canSfx() && throttle('splat', 70)) noise({ dur: 0.18, f: 900, to: 150, gain: 0.25 }); },
     hurt() { if (!canSfx()) return; tone({ f: 150, to: 55, dur: 0.18, type: 'square', gain: 0.22, lp: 900 }); noise({ dur: 0.12, f: 600, gain: 0.3 }); },
@@ -866,6 +868,7 @@
   window.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (S && S.state === 'perk' && e.key >= '1' && e.key <= '3') { const b = $('perks').children[+e.key - 1]; if (b) b.click(); return; }
+    if (S && S.state === 'play' && S.seq.phase === 'fire' && (k === ' ' || k === 'enter' || k === 'escape')) { e.preventDefault(); skipFireIntro(); return; }
     if (S && S.state === 'cine') {
       if (k === 'escape') endCine();
       else if (k === 'enter' || k === ' ') { e.preventDefault(); advanceCine(); }
@@ -896,6 +899,7 @@
   const aimStick = { on: false, id: null, sx: 0, sy: 0, x: 0, y: 0 };
   cvs.addEventListener('contextmenu', e => e.preventDefault());
   cvs.addEventListener('pointerdown', e => {
+    if (S && S.state === 'play' && S.seq.phase === 'fire') { skipFireIntro(); return; }
     if (e.pointerType === 'mouse') {
       input.mouse = true; input.mx = e.clientX; input.my = e.clientY;
       if (e.button === 0) input.fire = true;
@@ -1675,11 +1679,11 @@
   // CAMPAIGN: what carries over from one night to the next
   // ======================================================================
   const AMMO = {
-    mp5:      { res: 240, pack: 60, noise: 420 },
-    shotgun:  { res: 36,  pack: 12, noise: 760 },
-    ak:       { res: 150, pack: 60, noise: 650 },
-    deagle:   { res: 35,  pack: 14, noise: 700 },
-    launcher: { res: 8,   pack: 4,  noise: 950 },
+    mp5:      { res: 265, pack: 60, noise: 420 },
+    shotgun:  { res: 61,  pack: 12, noise: 760 },
+    ak:       { res: 175, pack: 60, noise: 650 },
+    deagle:   { res: 60,  pack: 14, noise: 700 },
+    launcher: { res: 33,  pack: 4,  noise: 950 },
   };
   const NIGHTS = [
     { reward: 'ak', brief: 'Aquí Marco. La primera marca de Lucía está al norte: sigue la brújula. Vendrán a por ti y cada poco llegará una horda. Munición tienes de sobra: úsala.' },
@@ -1703,7 +1707,7 @@
   }
   function newCampaign() {
     RUN = { night: 0, clueIdx: 0, needReturn: false, guns: newGuns(), scrap: 0, maxHp: 100, armor: 0, hpBuys: 0, lore: 0, kills: 0,
-      searched: new Set(), kits: new Set(), helped: new Set(), looted: new Set(), questDone: new Set() };
+      searched: new Set(), kits: new Set(), helped: new Set(), looted: new Set(), questDone: new Set(), fireIntro: false };
   }
 
   // ======================================================================
@@ -1720,7 +1724,7 @@
       guns: RUN.guns, cur: 'mp5', switchT: 0, knifeCd: 0,
       items: { vest: RUN.armor ? 1 : 0 },
       seq: { phase: 'done', t: 0, n: 0 },
-      enemies: [], bullets: [], gems: [], drops: [], fx: [], texts: [], decals: [], cracks: [], eshots: [], pools: [], seen: {}, leadX: 0, leadY: 0, hurtFlash: 0, hitMark: 0, hbT: 0, casings: [], parts: [],
+      enemies: [], bullets: [], gems: [], drops: [], fx: [], texts: [], decals: [], cracks: [], eshots: [], pools: [], seen: {}, leadX: 0, leadY: 0, dash: null, dashT: 10, flames: [], burn: 0, hurtFlash: 0, hitMark: 0, hbT: 0, casings: [], parts: [],
       chests: [], zones: [], flashLight: 0, looted: RUN.looted, kits: RUN.kits, helped: RUN.helped,
       searched: RUN.searched, spawnedAt: new Set(), crows: [], flies: [], leaves: [], roofA: new Map(), search: null, bolt: 0, boltT: rand(25, 45), windT: 0, windA: 0,
       clues: CLUES.map((c, i) => ({ ...c, ...CLUE_POS[i], found: i < RUN.clueIdx })), clueIdx: RUN.clueIdx,
@@ -1762,7 +1766,7 @@
     if (type !== 'boss' && Math.random() < 0.04 + S.night * 0.01) { e.elite = true; e.hp *= 3; e.maxHp *= 3; e.r *= 1.25; e.speed *= 1.25; }
     // the big ones leap in and pound the ground
     e.big = type === 'brute' || type === 'boss' || !!e.elite;
-    e.spitCd = rand(1, 2.5); e.pounceCd = rand(1, 2.5);
+    e.spitCd = rand(1, 2.5); e.pounceCd = rand(1, 2.5); e.seed = Math.random();
     if (e.big) { e.slamR = type === 'boss' ? 135 : type === 'brute' ? 92 : 78; e.slamDmg = type === 'boss' ? 30 : type === 'brute' ? 18 : 13; e.slamCd = rand(1, 2); e.z = 0; e.slamDmg *= 1 + (nightDiff() - 1) * 0.7; }
     if (dist === undefined && cx === undefined) placeAtEdge(e, a, rand(40, 220));
     else {
@@ -2247,6 +2251,37 @@
         for (let i = 0; i < n; i++) { const e = spawnEnemy(pickType(false), undefined, undefined, undefined, a + rand(-0.4, 0.4)); if (Math.random() < 0.35) { e.state = 'wander'; placeAtEdge(e, a + rand(-0.4, 0.4), rand(150, 400)); } }
       }
     }
+    // night 3: El Calcinado. An alarm, a lane of warning, then he rushes through it leaving fire
+    if (S.night === 2 && live && !inBase && !safe && !S.dash && (S.dashT -= dt) <= 0) {
+      const a = Math.random() * Math.PI * 2, L = Math.hypot(VW, VH) / 2 + 140;
+      S.dash = { phase: 'warn', t: 0, a, cx: p.x, cy: p.y, L, hit: false, lastF: 0 };
+      SFX.alarm(); if (!S.seen.calcinado) { S.seen.calcinado = true; banner('¡El Calcinado! Apártate'); }
+    }
+    if (S.dash) {
+      const D = S.dash, ux = Math.cos(D.a), uy = Math.sin(D.a);
+      D.t += dt;
+      if (D.phase === 'warn' && D.t >= 1.8) { D.phase = 'run'; D.t = 0; SFX.fireRush(); S.shake = Math.max(S.shake, 6); }
+      if (D.phase === 'run') {
+        const trav = D.t * 1500, zx = D.cx - ux * D.L + ux * trav, zy = D.cy - uy * D.L + uy * trav;
+        D.x = zx; D.y = zy;
+        while (D.lastF < trav) { D.lastF += 16; S.flames.push({ x: D.cx - ux * D.L + ux * D.lastF + rand(-6, 6), y: D.cy - uy * D.L + uy * D.lastF + rand(-6, 6), life: rand(2, 2.6), max: 2.6, seed: Math.random() * 6 }); }
+        if (S.flames.length > 220) S.flames.splice(0, S.flames.length - 220);
+        if (!D.hit && Math.hypot(p.x - zx, p.y - zy) < 34) { D.hit = true; S.burn = 2.5; if (hitPlayer(24 * nightDiff(), zx - ux * 30, zy - uy * 30, 60)) return gameOver(); }
+        for (const o of S.enemies) if (!o.dead && Math.hypot(o.x - zx, o.y - zy) < 40 + o.r && !o.torched) { o.torched = true; hurt(o, 80, ux * 400, uy * 400, true); }
+        if (trav > D.L * 2) {
+          if (!D.hit) { S.texts.push({ x: p.x, y: p.y - 34, txt: '¡ESQUIVADO!', life: 1.2, big: true }); addScrap(2); SFX.found(); }
+          for (const o of S.enemies) o.torched = false;
+          S.dash = null; S.dashT = rand(15, 24);
+        }
+      }
+    }
+    for (const f of S.flames) { f.life -= dt; if (live && f.life > 0.4 && Math.hypot(p.x - f.x, p.y - f.y) < 20) S.burn = Math.max(S.burn, 0.9); }
+    S.flames = S.flames.filter(f => f.life > 0);
+    if (S.burn > 0) {
+      S.burn -= dt; p.hp -= 5 * nightDiff() * dt; S.hurtFlash = Math.max(S.hurtFlash, 0.1);
+      if (Math.random() < dt * 20 && S.parts.length < PCAP) S.parts.push({ kind: 'spark', x: p.x + rand(-7, 7), y: p.y - rand(0, 18), vx: rand(-20, 20), vy: rand(-90, -40), life: rand(0.2, 0.4), max: 0.4, size: 2 });
+      if (p.hp <= 0) return gameOver();
+    }
     // on the way back they cut you off: small groups come from the direction of the refuge
     if (live && S.obj === 'return' && !inBase && Math.hypot(p.x, p.y) > 550 && (S.cutT = (S.cutT ?? 8) - dt) <= 0) {
       S.cutT = rand(10, 14) - S.night * 0.8;
@@ -2606,7 +2641,9 @@
     if (Q.phase === 'done') return;
     Q.t += dt;
     if (Q.phase === 'title') {
-      if (Q.t > 3.6) { Q.phase = 'fadein'; Q.t = 0; }
+      if (Q.t > 3.6) { Q.t = 0; if (S.night === 2 && !RUN.fireIntro) { Q.phase = 'fire'; Q.f = {}; } else Q.phase = 'fadein'; }
+    } else if (Q.phase === 'fire') {
+      fireIntroTick(Q);
     } else if (Q.phase === 'fadein') {
       if (Q.t > 1.0) {
         Q.phase = 'prep'; Q.t = 0; document.body.classList.remove('intro');
@@ -2621,6 +2658,98 @@
     } else if (Q.phase === 'go') {
       if (Q.t > 1.8) Q.phase = 'done';
     }
+  }
+  // "El Calcinado": his entrance, the first time night 3 begins
+  const FIRE_T = 11.2, FIRE_LINE = 'Marco: ¡Atento! Algo salió del incendio de la gasolinera… lo llaman El Calcinado. Cuando suene la alarma, quítate de su camino.';
+  function fireIntroTick(Q) {
+    const f = Q.f, t = Q.t, once = (k, at, fn) => { if (!f[k] && t >= at) { f[k] = true; fn(); } };
+    once('a', 0.1, () => { SFX.crackle(1); SFX.thunder(0.2); });
+    once('b', 2.2, () => SFX.roar());
+    once('c', 3.8, () => { SFX.boom(); SFX.fireRush(); buzz(80); });
+    once('d', 5.0, () => SFX.radio());
+    once('e', 9.1, () => SFX.fireRush());
+    if (Math.random() < 0.3) SFX.crackle(0.6);
+    if (t >= FIRE_T) endFireIntro();
+  }
+  function endFireIntro() { RUN.fireIntro = true; saveRun(); S.seq.phase = 'fadein'; S.seq.t = 0; }
+  function skipFireIntro() { if (S && S.seq.phase === 'fire') endFireIntro(); }
+  function drawFireIntro(t) {
+    const g = ctx, s2 = Math.max(W / 960, H / 540), ox = (W - 960 * s2) / 2, oy = (H - 540 * s2) / 2;
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    g.save(); g.translate(ox, oy); g.scale(s2, s2);
+    const burst = t > 3.8 ? Math.max(0, 1 - (t - 3.8) / 0.9) : 0;
+    if (burst > 0) g.translate(rand(-1, 1) * 14 * burst, rand(-1, 1) * 10 * burst);
+    const grow = Math.min(1, t / 3.8), FX = 480, FY = 420;
+    // sky, smoke and a burning gas station
+    const sky = g.createLinearGradient(0, 0, 0, 420); sky.addColorStop(0, '#060308'); sky.addColorStop(1, `rgb(${60 + grow * 60},${18 + grow * 14},10)`);
+    g.fillStyle = sky; g.fillRect(-40, -40, 1040, 620);
+    for (let j = 0; j < 9; j++) { const p = (t * 0.08 + j / 9) % 1; g.fillStyle = `rgba(30,22,22,${0.35 * (1 - p)})`; g.beginPath(); g.arc(FX + Math.sin(j * 3 + t * 0.4) * 60 + p * 80, FY - 120 - p * 380, 40 + p * 90, 0, 7); g.fill(); }
+    g.fillStyle = '#0a0606';
+    for (let i = 0; i < 16; i++) { const x = i * 64 + (i % 3) * 9, h = 80 + (i * 37 % 60); g.beginPath(); g.moveTo(x - 30, 430); g.lineTo(x, 430 - h); g.lineTo(x + 30, 430); g.fill(); }
+    g.fillRect(250, 300, 460, 16); g.fillRect(270, 316, 12, 110); g.fillRect(678, 316, 12, 110);
+    g.fillStyle = '#140a08'; g.fillRect(330, 360, 70, 66); g.fillRect(560, 360, 70, 66);
+    const gr = g.createLinearGradient(0, 420, 0, 540); gr.addColorStop(0, '#1a0c06'); gr.addColorStop(1, '#050303'); g.fillStyle = gr; g.fillRect(-40, 420, 1040, 160);
+    g.save(); g.globalCompositeOperation = 'lighter';
+    stamp(g, ST_WARM, FX, FY - 40, 220 + grow * 180 + burst * 260, 0.75); stamp(g, ST_WARM, FX, FY + 10, 110 + grow * 70, 0.6);
+    g.restore();
+    // the monster rising out of the fire
+    const rise = Math.max(0, Math.min(1, (t - 2.2) / 1.6)), dash = Math.max(0, (t - 9.1) / 0.35);
+    const zx = FX + (dash > 0 ? dash * 900 : 0), zy = FY + (1 - rise) * 190 - (t > 3.8 && dash <= 0 ? Math.sin(t * 2) * 3 : 0);
+    if (dash > 0) { g.save(); g.globalCompositeOperation = 'lighter'; for (let i = 0; i < 26; i++) { const x = FX + i * 36; if (x > zx) break; const a = Math.max(0, 1 - (t - 9.1 - i * 0.012) * 0.8); stamp(g, ST_WARM, x, FY - 10, 70, a); g.fillStyle = `rgba(255,${150 + i % 3 * 30},60,${a})`; g.beginPath(); g.moveTo(x - 14, FY); g.lineTo(x + Math.sin(t * 20 + i) * 4, FY - 30 - (i % 4) * 8); g.lineTo(x + 14, FY); g.fill(); } g.restore(); }
+    if (rise > 0 && zx < 1100) drawCalcinado(g, zx, zy, 2.2, t, dash > 0 ? 0.35 : 0, true);
+    // front flames over his legs
+    g.save(); g.translate(FX, FY + 14); g.scale(2.2 + grow * 1.4, 1.6 + grow * 1.1); drawFlamesOn(g, 0, 0, t, 1.3); g.restore();
+    g.save(); g.translate(FX - 110, FY + 10); g.scale(2 + grow, 2 + grow); drawFlamesOn(g, 0, 0, t * 1.1, 4.1); g.restore();
+    g.save(); g.translate(FX + 120, FY + 12); g.scale(1.8 + grow, 1.8 + grow); drawFlamesOn(g, 0, 0, t * 0.9, 7.3); g.restore();
+    for (let j = 0; j < 40; j++) { const p = (t * (0.3 + (j % 5) * 0.06) + j * 0.137) % 1; g.fillStyle = `rgba(255,${140 + (j % 4) * 25},60,${(1 - p) * (0.5 + grow * 0.5)})`; g.fillRect(FX + Math.sin(j * 5.1 + t) * 160 * p + (j % 7 - 3) * 20, FY - 20 - p * 420, 2.5, 2.5); }
+    g.restore();
+    if (burst > 0) { g.fillStyle = `rgba(255,190,110,${burst * burst * 0.6})`; g.fillRect(0, 0, W, H); }
+    // letterbox, title and Marco on the radio
+    const bh = Math.min(70, H * 0.09); g.fillStyle = '#000'; g.fillRect(0, 0, W, bh); g.fillRect(0, H - bh, W, bh);
+    const base = Math.min(W, H);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    if (t > 4.1 && t < 9.4) {
+      const k = Math.min(1, (t - 4.1) / 0.35), a = Math.min(k, (9.4 - t) / 0.4), sc = 1 + (1 - k) * 0.6;
+      g.save(); g.globalAlpha = a; g.translate(W / 2, Math.max(bh + base * 0.09, H * 0.19)); g.scale(sc, sc);
+      g.font = `700 ${Math.max(10, base * 0.024)}px "IBM Plex Mono", monospace`; g.fillStyle = '#ffb070'; g.fillText('N U E V O   E N E M I G O   ·   N O C H E   3', 0, base * 0.095);
+      g.font = `400 ${Math.round(base * 0.15)}px "Pirata One", Georgia, serif`;
+      g.fillStyle = '#2a0600'; g.fillText('El Calcinado', 4, 5);
+      const tg = g.createLinearGradient(0, -base * 0.07, 0, base * 0.07); tg.addColorStop(0, '#fff2b0'); tg.addColorStop(0.5, '#ffa030'); tg.addColorStop(1, '#c2301a');
+      g.fillStyle = tg; g.fillText('El Calcinado', 0, 0);
+      g.restore();
+    }
+    if (t > 5 && t < 10.4) {
+      const n = Math.min(FIRE_LINE.length, Math.floor((t - 5) * 38)), w = Math.min(W - 32, 720), h = 74, x = (W - w) / 2, y = H - bh - h - 14;
+      g.globalAlpha = Math.min(1, (10.4 - t) / 0.4);
+      g.fillStyle = 'rgba(12,10,16,.9)'; rr(g, x, y, w, h, 4); g.fill(); g.strokeStyle = 'rgba(180,220,120,.35)'; g.lineWidth = 1; g.stroke();
+      g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#b5d86a'; g.font = `700 11px "IBM Plex Mono", monospace`; g.fillText('RADIO · MARCO, DESDE EL REFUGIO', x + 14, y + 10);
+      g.fillStyle = '#efe6d4'; g.font = `400 13px "IBM Plex Mono", monospace`;
+      const txt = FIRE_LINE.slice(FIRE_LINE.indexOf(':') + 2, Math.max(FIRE_LINE.indexOf(':') + 2, n));
+      const words = txt.split(' '); let line = '', ly = y + 30;
+      for (const wd of words) { const tryL = line ? line + ' ' + wd : wd; if (g.measureText(tryL).width > w - 28) { g.fillText(line, x + 14, ly); line = wd; ly += 18; } else line = tryL; }
+      g.fillText(line, x + 14, ly);
+      g.globalAlpha = 1;
+    }
+    g.textAlign = 'right'; g.textBaseline = 'middle'; g.font = `400 11px "IBM Plex Mono", monospace`; g.fillStyle = 'rgba(239,230,212,.5)';
+    g.fillText(TOUCH ? 'toca para saltar' : 'clic o Espacio para saltar', W - 16, bh / 2);
+    if (t > FIRE_T - 0.8) { g.fillStyle = `rgba(0,0,0,${Math.min(1, (t - (FIRE_T - 0.8)) / 0.8)})`; g.fillRect(0, 0, W, H); }
+  }
+  // the burning monster, charcoal skin with glowing cracks; sc = size, lean when running
+  function drawCalcinado(g, x, y, sc, t, lean, big) {
+    g.save(); g.translate(x, y); g.scale(sc, sc); if (lean) g.rotate(lean);
+    g.fillStyle = '#0b0605'; g.strokeStyle = '#0b0605'; g.lineCap = 'round';
+    g.lineWidth = 9; g.beginPath(); g.moveTo(-6, -40); g.lineTo(-10 + Math.sin(t * 9) * 4, 0); g.moveTo(6, -40); g.lineTo(10 - Math.sin(t * 9) * 4, 0); g.stroke();
+    g.beginPath(); g.ellipse(0, -62, 18, 26, 0, 0, 7); g.fill();
+    g.lineWidth = 8; g.beginPath(); g.moveTo(-14, -76); g.lineTo(-30, -52 + Math.sin(t * 5) * 4); g.lineTo(-26, -34); g.moveTo(14, -76); g.lineTo(32, -56 + Math.cos(t * 5) * 4); g.lineTo(30, -36); g.stroke();
+    g.beginPath(); g.arc(2, -98, 12, 0, 7); g.fill();
+    g.save(); g.globalCompositeOperation = 'lighter';
+    g.strokeStyle = `rgba(255,${130 + Math.sin(t * 7) * 40},40,.95)`; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(-8, -84); g.lineTo(-2, -70); g.lineTo(-10, -56); g.lineTo(-4, -44); g.moveTo(10, -80); g.lineTo(4, -64); g.lineTo(12, -50); g.moveTo(-2, -104); g.lineTo(3, -96); g.lineTo(-3, -90); g.moveTo(-26, -50); g.lineTo(-22, -40); g.moveTo(28, -54); g.lineTo(26, -42); g.stroke();
+    g.fillStyle = '#fff4c0'; g.fillRect(-4, -101, 4, 3); g.fillRect(4, -101, 4, 3);
+    stamp(g, ST_WARM, 2, -99, 10, 0.9); stamp(g, ST_WARM, 0, -62, 16, 0.5);
+    g.restore();
+    for (const [fx, fy, fs] of [[2, -110, 0.5], [-14, -80, 0.38], [16, -80, 0.38], [0, -45, 0.32]]) { g.save(); g.translate(fx, fy); g.scale(fs, fs); drawFlamesOn(g, 0, 0, t * 1.3 + fx, fx * 0.3); g.restore(); }
+    g.restore();
   }
   function goMoment() {
     const p = S.p, Q = S.seq, N = NIGHTS[S.night];
@@ -2768,8 +2897,8 @@
         else { for (const id of ORDER) if (RUN.guns[id].owned) RUN.guns[id].l = Math.min(MAX_GUN_LVL, RUN.guns[id].l + 1); lines.push(`${N.side.who}: «${N.side.done}» <b>Todas tus armas suben un nivel</b>.`); }
       } else lines.push(`${N.side.who} sigue esperando sus ${N.side.label} (${S.questGot}/${N.side.need}).`);
     }
-    for (const id of ORDER) if (RUN.guns[id].owned) RUN.guns[id].res += AMMO[id].pack;
-    lines.push('Marco te ha apartado algo de munición. Elena te cura las heridas.');
+    for (const id of ORDER) if (RUN.guns[id].owned) RUN.guns[id].res += AMMO[id].pack + 25;
+    lines.push('Marco te ha apartado algo de munición (+25 balas por arma). Elena te cura las heridas.');
     RUN.night = Math.min(n + 1, NIGHTS.length - 1);
     $('campTitle').textContent = `Noche ${n + 1} superada`;
     $('campStats').innerHTML = `Pista: <b>${CLUES[RUN.clueIdx - 1].name}</b> · Zombis abatidos: <b>${S.kills}</b> · Chatarra traída: <b>${S.nightScrap}</b>`;
@@ -3155,7 +3284,18 @@
     ctx.beginPath(); ctx.ellipse(x, y + r * 0.05, r * 0.72, r * 0.72, 0, 0, 7); ctx.fill();
     if (!fl && !LOWFX) {
       ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1.2; ctx.stroke();
-      ctx.fillStyle = 'rgba(120,30,30,.6)'; ctx.fillRect(x - r * 0.35, y + r * 0.05, r * 0.25, r * 0.35); ctx.fillRect(x + r * 0.15, y - r * 0.3, r * 0.2, r * 0.2);
+      const sd = e.seed ?? (e.flankR / 240);
+      // shading on the far side gives the body volume
+      ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(x + r * 0.22, y + r * 0.1, r * 0.5, r * 0.62, 0, 0, 7); ctx.fill();
+      // torn hem
+      ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.moveTo(x - r * 0.62, y + r * 0.42);
+      for (let i = 0; i <= 6; i++) ctx.lineTo(x - r * 0.62 + i * r * 0.207, y + r * (i % 2 ? 0.66 : 0.5) + Math.sin(sd * 40 + i) * r * 0.05);
+      ctx.lineTo(x + r * 0.62, y + r * 0.42); ctx.fill();
+      // blood and dirt, different on every zombie
+      ctx.fillStyle = 'rgba(120,30,30,.6)'; ctx.fillRect(x - r * (0.2 + sd * 0.3), y + r * 0.05, r * 0.25, r * 0.35); ctx.fillRect(x + r * (0.05 + sd * 0.2), y - r * 0.3, r * 0.2, r * 0.2);
+      ctx.fillStyle = 'rgba(40,30,20,.35)'; for (let i = 0; i < 3; i++) { const a2 = sd * 20 + i * 2.1; ctx.beginPath(); ctx.arc(x + Math.cos(a2) * r * 0.4, y + Math.sin(a2) * r * 0.35, r * 0.08, 0, 7); ctx.fill(); }
+      // a bite wound with ribs showing on some
+      if (sd > 0.55 && !e.big) { ctx.fillStyle = '#4a1414'; ctx.beginPath(); ctx.ellipse(x - r * 0.25, y - r * 0.05, r * 0.2, r * 0.14, 0.4, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(225,212,188,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - r * 0.38, y - r * 0.08); ctx.lineTo(x - r * 0.12, y - r * 0.12); ctx.moveTo(x - r * 0.36, y + r * 0.02); ctx.lineTo(x - r * 0.14, y - r * 0.02); ctx.stroke(); }
       ctx.fillStyle = e.skin; ctx.beginPath(); ctx.moveTo(x - r * 0.1, y + r * 0.55); ctx.lineTo(x + r * 0.2, y + r * 0.2); ctx.lineTo(x + r * 0.35, y + r * 0.6); ctx.fill();
       if (e.big) {
         const hv = Math.sin(S.t * 3 + e.flankR) * r * 0.05;
@@ -3195,6 +3335,11 @@
     if (!fl && !LOWFX) {
       ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1.2; ctx.stroke();
       ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.arc(hx + r * 0.1, hy + r * 0.1, r * 0.35, 0, Math.PI); ctx.fill();
+      { const sd = e.seed ?? (e.flankR / 240);
+        // stringy hair on some, a moonlit rim on the top of the head
+        if (sd < 0.6) { ctx.strokeStyle = 'rgba(30,22,16,.85)'; ctx.lineWidth = 1.2; ctx.beginPath(); for (let i = 0; i < 5; i++) { const a2 = Math.PI * 1.1 + i * 0.2; ctx.moveTo(hx + Math.cos(a2) * r * 0.45, hy + Math.sin(a2) * r * 0.45); ctx.lineTo(hx + Math.cos(a2) * r * 0.62 + Math.sin(S.t * 2 + i) * 1.2, hy + Math.sin(a2) * r * 0.2 + r * 0.25); } ctx.stroke(); }
+        ctx.strokeStyle = 'rgba(200,210,235,.18)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(hx, hy, r * 0.46, Math.PI * 1.15, Math.PI * 1.75); ctx.stroke();
+        ctx.fillStyle = 'rgba(60,20,20,.5)'; ctx.fillRect(hx + r * (sd - 0.5) * 0.4, hy - r * 0.05, r * 0.08, r * 0.3); }
       ctx.fillStyle = '#2a2018'; ctx.fillRect(hx - r * 0.35, hy - r * 0.5, r * 0.25, r * 0.15); ctx.fillRect(hx + r * 0.05, hy - r * 0.52, r * 0.3, r * 0.12);
       ctx.fillStyle = '#3a1212'; ctx.fillRect(hx - r * 0.15, hy + r * 0.2, r * 0.3, r * 0.1);
     }
@@ -3501,12 +3646,15 @@
     for (const z of S.zones) if (!z.opened) hole(sx(z.x), sy(z.y), 170 * k, 0.75);
     if (clueRevealed()) { const c = S.clues[S.clueIdx]; hole(sx(c.x), sy(c.y), (80 + Math.sin(t * 3) * 10) * k, 0.8); }
     if (S.hospitalShown) { hole(sx(HOSPITAL.x), sy(HOSPITAL.y - 150), 420 * k, 0.5); hole(sx(HOSPITAL.x + 92), sy(HOSPITAL.y - 300), 60 * k, 0.9); }
+    for (const f of S.flames) if (f.life > 0.3) hole(sx(f.x), sy(f.y), 60 * k, Math.min(1, f.life) * 0.5);
+    if (S.dash && S.dash.x !== undefined) hole(sx(S.dash.x), sy(S.dash.y), 170 * k, 1);
     ctx.drawImage(light, 0, 0, W, H);
   }
 
   function drawSeq() {
     const Q = S.seq;
     if (S.whiteFlash > 0) { ctx.fillStyle = `rgba(255,245,225,${S.whiteFlash})`; ctx.fillRect(0, 0, W, H); }
+    if (Q.phase === 'fire' && S.state !== 'menu') { drawFireIntro(Q.t); return; }
     if (Q.phase === 'title' && S.state !== 'menu') {
       const tt = Q.t, fin = isFinal(S.night), base = Math.min(W, H), cy = H * 0.46;
       const a = Math.max(0, Math.min(1, tt / 0.7, (3.6 - tt) / 0.7));
@@ -3952,6 +4100,42 @@
       const es = rage ? 4 : 3;
       ctx.fillRect(hx - ex - es / 2, hy - e.r * 0.08, es, es - 0.5); ctx.fillRect(hx + ex - es / 2, hy - e.r * 0.06, es, es - 0.5);
       if (rage) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; stamp(ctx, ST_WARM, hx, hy, e.r * 1.4, 0.7); ctx.restore(); }
+    }
+    // El Calcinado: warning lane with arrows, the edge marker, the rush and the burning trail
+    if (S.flames.length) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (const f of S.flames) {
+        const x = f.x - camX, y = f.y - camY; if (!on(x, y, 30)) continue;
+        const k = Math.min(1, f.life / 0.8), fl2 = 0.7 + 0.3 * Math.sin(S.t * 18 + f.seed * 5);
+        stamp(ctx, ST_WARM, x, y - 4, 26 * fl2, k);
+        ctx.fillStyle = `rgba(255,${120 + (f.seed * 30 | 0)},40,${0.8 * k})`; ctx.beginPath(); ctx.moveTo(x - 6, y); ctx.lineTo(x + Math.sin(S.t * 14 + f.seed) * 3, y - 14 * fl2 * k - 4); ctx.lineTo(x + 6, y); ctx.fill();
+        ctx.fillStyle = `rgba(255,230,140,${0.7 * k})`; ctx.beginPath(); ctx.moveTo(x - 3, y); ctx.lineTo(x, y - 7 * fl2 * k - 2); ctx.lineTo(x + 3, y); ctx.fill();
+      }
+      ctx.restore();
+    }
+    if (S.dash) {
+      const D = S.dash, ux = Math.cos(D.a), uy = Math.sin(D.a), cx = D.cx - camX, cy = D.cy - camY;
+      if (D.phase === 'warn') {
+        const bl = Math.sin(D.t * (8 + D.t * 10)) > 0, a0 = 0.12 + 0.18 * (D.t / 1.8);
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(D.a);
+        ctx.fillStyle = `rgba(255,90,30,${bl ? a0 + 0.1 : a0})`; ctx.fillRect(-D.L, -34, D.L * 2, 68);
+        ctx.strokeStyle = `rgba(255,150,60,${bl ? 0.9 : 0.5})`; ctx.lineWidth = 2; ctx.setLineDash([14, 10]); ctx.beginPath(); ctx.moveTo(-D.L, -34); ctx.lineTo(D.L, -34); ctx.moveTo(-D.L, 34); ctx.lineTo(D.L, 34); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = `rgba(255,200,120,${bl ? 0.9 : 0.4})`;
+        for (let i = -6; i <= 6; i++) { const ax = i * 70 + (D.t * 260) % 70; ctx.beginPath(); ctx.moveTo(ax - 10, -12); ctx.lineTo(ax + 6, 0); ctx.lineTo(ax - 10, 12); ctx.lineTo(ax - 4, 0); ctx.fill(); }
+        ctx.restore();
+        // where he comes from, at the edge of the screen
+        const back = D.a + Math.PI, ed = Math.max(40, edgeDist(back, -46)), mx = VW / 2 + Math.cos(back) * ed, my = VH / 2 + Math.sin(back) * ed;
+        ctx.save(); ctx.translate(mx, my); ctx.rotate(D.a);
+        ctx.globalCompositeOperation = 'lighter'; stamp(ctx, ST_WARM, 0, 0, 40, bl ? 1 : 0.5); ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = bl ? '#ffcf70' : '#ff7a30'; ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-10, -14); ctx.lineTo(-4, 0); ctx.lineTo(-10, 14); ctx.fill();
+        ctx.restore();
+      } else if (D.x !== undefined) {
+        const x = D.x - camX, y = D.y - camY;
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        for (let i = 1; i <= 6; i++) stamp(ctx, ST_WARM, x - ux * i * 22, y - uy * i * 22 - 20, 50 - i * 5, 1 - i * 0.14);
+        ctx.restore();
+        drawCalcinado(ctx, x, y + 14, 0.34, S.t, ux >= 0 ? 0.5 : -0.5, false);
+      }
     }
     // acid: glowing pools, blobs in flight with their landing mark, spit and pounce warnings
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
