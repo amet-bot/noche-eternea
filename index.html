@@ -492,8 +492,8 @@
     cvs.width = W * dpr; cvs.height = H * dpr;
     cvs.style.width = W + 'px'; cvs.style.height = H + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // phones in landscape have little height: zoom out so you still see around you
-    Z = Math.min(W, H) < 500 ? 0.95 : W < 720 ? 1.15 : 1.4;
+    // a close camera keeps the view tight; phones in landscape get a little more room
+    Z = Math.min(W, H) < 500 ? 1.1 : W < 720 ? 1.35 : 1.7;
     VW = W / Z; VH = H / Z;
     light.width = Math.max(1, Math.ceil(W / LS)); light.height = Math.max(1, Math.ceil(H / LS));
     fogC.width = light.width; fogC.height = light.height;
