@@ -969,10 +969,10 @@
 
   const ORDER = ['mp5', 'shotgun', 'ak', 'deagle', 'launcher'];
   const GUNS = {
-    mp5:      { name: 'MP5',           dmg: 10, cd: 0.085, mag: 30, reload: 1.6, speed: 820, spread: 0.08, pellets: 1, pierce: 1, range: 480, knock: 70, shake: 1.2 },
-    shotgun:  { name: 'Escopeta',      dmg: 24, cd: 0.75, mag: 6,  reload: 1.9, speed: 720, spread: 0.4,  pellets: 9, pierce: 2, range: 400, knock: 460, shake: 10, heavy: true },
-    ak:       { name: 'AK-47',         dmg: 21, cd: 0.09, mag: 30, reload: 2.0, speed: 900, spread: 0.09, pellets: 1, pierce: 2, range: 580, knock: 120, shake: 2.6 },
-    deagle:   { name: 'Desert Eagle',  dmg: 52, cd: 0.5,  mag: 7,  reload: 1.4, speed: 940, spread: 0.02, pellets: 1, pierce: 4, range: 620, knock: 300, shake: 5, heavy: true },
+    mp5:      { name: 'MP5',           dmg: 10, cd: 0.085, mag: 80, reload: 1.8, speed: 820, spread: 0.08, pellets: 1, pierce: 1, range: 480, knock: 70, shake: 1.2 },
+    shotgun:  { name: 'Escopeta',      dmg: 24, cd: 0.75, mag: 60, reload: 2.2, speed: 720, spread: 0.4,  pellets: 9, pierce: 2, range: 400, knock: 460, shake: 10, heavy: true },
+    ak:       { name: 'AK-47',         dmg: 21, cd: 0.09, mag: 80, reload: 2.2, speed: 900, spread: 0.09, pellets: 1, pierce: 2, range: 580, knock: 120, shake: 2.6 },
+    deagle:   { name: 'Desert Eagle',  dmg: 52, cd: 0.5,  mag: 60, reload: 1.8, speed: 940, spread: 0.02, pellets: 1, pierce: 4, range: 620, knock: 300, shake: 5, heavy: true },
     launcher: { name: 'Lanzagranadas', dmg: 75, cd: 1.1,  mag: 4,  reload: 2.6, speed: 440, spread: 0.02, pellets: 1, pierce: 1, range: 560, knock: 0,   shake: 3, boom: 95 },
   };
   const MAX_GUN_LVL = 5;
@@ -1679,10 +1679,10 @@
   // CAMPAIGN: what carries over from one night to the next
   // ======================================================================
   const AMMO = {
-    mp5:      { res: 265, pack: 60, noise: 420 },
-    shotgun:  { res: 61,  pack: 12, noise: 760 },
-    ak:       { res: 175, pack: 60, noise: 650 },
-    deagle:   { res: 60,  pack: 14, noise: 700 },
+    mp5:      { res: 345, pack: 80, noise: 420 },
+    shotgun:  { res: 205, pack: 60, noise: 760 },
+    ak:       { res: 265, pack: 80, noise: 650 },
+    deagle:   { res: 205, pack: 60, noise: 700 },
     launcher: { res: 33,  pack: 4,  noise: 950 },
   };
   const NIGHTS = [
