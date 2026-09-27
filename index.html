@@ -638,7 +638,7 @@
     swell() { if (!canSfx()) return; const t = now(); tone({ t0: t, f: 180, to: 520, dur: 0.85, type: 'sawtooth', gain: 0.1, lp: 900 }); for (let k = 0; k < 4; k++) tone({ t0: t + k * 0.2, f: 880 + k * 120, dur: 0.06, type: 'square', gain: 0.03 }); },
     hiss() { if (!canSfx() || !throttle('hiss', 300)) return; noise({ dur: 0.45, f: 5200, type: 'bandpass', q: 2, gain: 0.18, attack: 0.05 }); },
     pounce() { if (!canSfx()) return; tone({ f: 760, to: 380, dur: 0.3, type: 'sawtooth', gain: 0.08, lp: 3000, vib: [30, 40] }); noise({ dur: 0.25, f: 2500, type: 'bandpass', q: 1, gain: 0.16 }); },
-    alarm() { if (!canSfx()) return; const t = now(); [0, 0.45, 0.85, 1.15, 1.4, 1.6].forEach(d => { tone({ t0: t + d, f: 1480, dur: 0.09, type: 'square', gain: 0.07, lp: 4000 }); tone({ t0: t + d, f: 740, dur: 0.09, type: 'square', gain: 0.04 }); }); },
+    alarm() { if (!canSfx()) return; const t = now(); [0, 1.0, 1.8, 2.4, 2.9, 3.25, 3.5, 3.7, 3.85].forEach(d => { tone({ t0: t + d, f: 1480, dur: 0.09, type: 'square', gain: 0.07, lp: 4000 }); tone({ t0: t + d, f: 740, dur: 0.09, type: 'square', gain: 0.04 }); }); },
     fireRush() { if (!canSfx()) return; const t = now(); noise({ t0: t, dur: 1.1, f: 300, to: 3500, type: 'bandpass', q: 0.8, gain: 0.7, attack: 0.05, rev: 0.4 }); tone({ t0: t, f: 90, to: 40, dur: 0.9, type: 'sawtooth', gain: 0.25, lp: 500 }); for (let k = 0; k < 10; k++) noise({ t0: t + k * 0.07, dur: 0.03, f: rand(1500, 4000), type: 'highpass', gain: 0.2 }); },
     heart() { if (!canSfx()) return; const t = now(); tone({ t0: t, f: 62, to: 42, dur: 0.13, gain: 0.55 }); tone({ t0: t + 0.19, f: 58, to: 40, dur: 0.12, gain: 0.35 }); },
     splat() { if (canSfx() && throttle('splat', 70)) noise({ dur: 0.18, f: 900, to: 150, gain: 0.25 }); },
@@ -1724,7 +1724,7 @@
       guns: RUN.guns, cur: 'mp5', switchT: 0, knifeCd: 0,
       items: { vest: RUN.armor ? 1 : 0 },
       seq: { phase: 'done', t: 0, n: 0 },
-      enemies: [], bullets: [], gems: [], drops: [], fx: [], texts: [], decals: [], cracks: [], eshots: [], pools: [], seen: {}, leadX: 0, leadY: 0, dash: null, dashT: 10, flames: [], burn: 0, hurtFlash: 0, hitMark: 0, hbT: 0, casings: [], parts: [],
+      enemies: [], bullets: [], gems: [], drops: [], fx: [], texts: [], decals: [], cracks: [], eshots: [], pools: [], seen: {}, leadX: 0, leadY: 0, dash: null, dashT: 15, flames: [], burn: 0, hurtFlash: 0, hitMark: 0, hbT: 0, casings: [], parts: [],
       chests: [], zones: [], flashLight: 0, looted: RUN.looted, kits: RUN.kits, helped: RUN.helped,
       searched: RUN.searched, spawnedAt: new Set(), crows: [], flies: [], leaves: [], roofA: new Map(), search: null, bolt: 0, boltT: rand(25, 45), windT: 0, windA: 0,
       clues: CLUES.map((c, i) => ({ ...c, ...CLUE_POS[i], found: i < RUN.clueIdx })), clueIdx: RUN.clueIdx,
@@ -2260,7 +2260,7 @@
     if (S.dash) {
       const D = S.dash, ux = Math.cos(D.a), uy = Math.sin(D.a);
       D.t += dt;
-      if (D.phase === 'warn' && D.t >= 1.8) { D.phase = 'run'; D.t = 0; SFX.fireRush(); S.shake = Math.max(S.shake, 6); }
+      if (D.phase === 'warn' && D.t >= WARN_T) { D.phase = 'run'; D.t = 0; SFX.fireRush(); S.shake = Math.max(S.shake, 6); }
       if (D.phase === 'run') {
         const trav = D.t * 1500, zx = D.cx - ux * D.L + ux * trav, zy = D.cy - uy * D.L + uy * trav;
         D.x = zx; D.y = zy;
@@ -2271,7 +2271,7 @@
         if (trav > D.L * 2) {
           if (!D.hit) { S.texts.push({ x: p.x, y: p.y - 34, txt: '¡ESQUIVADO!', life: 1.2, big: true }); addScrap(2); SFX.found(); }
           for (const o of S.enemies) o.torched = false;
-          S.dash = null; S.dashT = rand(15, 24);
+          S.dash = null; S.dashT = rand(30, 42);
         }
       }
     }
@@ -2660,6 +2660,7 @@
     }
   }
   // "El Calcinado": his entrance, the first time night 3 begins
+  const WARN_T = 4; // seconds of alarm before El Calcinado rushes through
   const FIRE_T = 11.2, FIRE_LINE = 'Marco: ¡Atento! Algo salió del incendio de la gasolinera… lo llaman El Calcinado. Cuando suene la alarma, quítate de su camino.';
   function fireIntroTick(Q) {
     const f = Q.f, t = Q.t, once = (k, at, fn) => { if (!f[k] && t >= at) { f[k] = true; fn(); } };
@@ -4116,7 +4117,7 @@
     if (S.dash) {
       const D = S.dash, ux = Math.cos(D.a), uy = Math.sin(D.a), cx = D.cx - camX, cy = D.cy - camY;
       if (D.phase === 'warn') {
-        const bl = Math.sin(D.t * (8 + D.t * 10)) > 0, a0 = 0.12 + 0.18 * (D.t / 1.8);
+        const bl = Math.sin(D.t * (4 + D.t * 5)) > 0, a0 = 0.05 + 0.22 * (D.t / WARN_T);
         ctx.save(); ctx.translate(cx, cy); ctx.rotate(D.a);
         ctx.fillStyle = `rgba(255,90,30,${bl ? a0 + 0.1 : a0})`; ctx.fillRect(-D.L, -34, D.L * 2, 68);
         ctx.strokeStyle = `rgba(255,150,60,${bl ? 0.9 : 0.5})`; ctx.lineWidth = 2; ctx.setLineDash([14, 10]); ctx.beginPath(); ctx.moveTo(-D.L, -34); ctx.lineTo(D.L, -34); ctx.moveTo(-D.L, 34); ctx.lineTo(D.L, 34); ctx.stroke(); ctx.setLineDash([]);
