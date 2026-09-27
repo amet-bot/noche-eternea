@@ -638,7 +638,7 @@
     swell() { if (!canSfx()) return; const t = now(); tone({ t0: t, f: 180, to: 520, dur: 0.85, type: 'sawtooth', gain: 0.1, lp: 900 }); for (let k = 0; k < 4; k++) tone({ t0: t + k * 0.2, f: 880 + k * 120, dur: 0.06, type: 'square', gain: 0.03 }); },
     hiss() { if (!canSfx() || !throttle('hiss', 300)) return; noise({ dur: 0.45, f: 5200, type: 'bandpass', q: 2, gain: 0.18, attack: 0.05 }); },
     pounce() { if (!canSfx()) return; tone({ f: 760, to: 380, dur: 0.3, type: 'sawtooth', gain: 0.08, lp: 3000, vib: [30, 40] }); noise({ dur: 0.25, f: 2500, type: 'bandpass', q: 1, gain: 0.16 }); },
-    alarm() { if (!canSfx()) return; const t = now(); [0, 1.0, 1.8, 2.4, 2.9, 3.25, 3.5, 3.7, 3.85].forEach(d => { tone({ t0: t + d, f: 1480, dur: 0.09, type: 'square', gain: 0.07, lp: 4000 }); tone({ t0: t + d, f: 740, dur: 0.09, type: 'square', gain: 0.04 }); }); },
+    alarm() { if (!canSfx()) return; const t = now(); [0, 0.5, 0.9, 1.2, 1.45, 1.65, 1.8, 1.9].forEach(d => { tone({ t0: t + d, f: 1480, dur: 0.09, type: 'square', gain: 0.07, lp: 4000 }); tone({ t0: t + d, f: 740, dur: 0.09, type: 'square', gain: 0.04 }); }); },
     fireRush() { if (!canSfx()) return; const t = now(); noise({ t0: t, dur: 1.1, f: 300, to: 3500, type: 'bandpass', q: 0.8, gain: 0.7, attack: 0.05, rev: 0.4 }); tone({ t0: t, f: 90, to: 40, dur: 0.9, type: 'sawtooth', gain: 0.25, lp: 500 }); for (let k = 0; k < 10; k++) noise({ t0: t + k * 0.07, dur: 0.03, f: rand(1500, 4000), type: 'highpass', gain: 0.2 }); },
     heart() { if (!canSfx()) return; const t = now(); tone({ t0: t, f: 62, to: 42, dur: 0.13, gain: 0.55 }); tone({ t0: t + 0.19, f: 58, to: 40, dur: 0.12, gain: 0.35 }); },
     splat() { if (canSfx() && throttle('splat', 70)) noise({ dur: 0.18, f: 900, to: 150, gain: 0.25 }); },
@@ -1724,7 +1724,7 @@
       guns: RUN.guns, cur: 'mp5', switchT: 0, knifeCd: 0,
       items: { vest: RUN.armor ? 1 : 0 },
       seq: { phase: 'done', t: 0, n: 0 },
-      enemies: [], bullets: [], gems: [], drops: [], fx: [], texts: [], decals: [], cracks: [], eshots: [], pools: [], seen: {}, leadX: 0, leadY: 0, dash: null, dashT: 15, flames: [], burn: 0, hurtFlash: 0, hitMark: 0, hbT: 0, casings: [], parts: [],
+      enemies: [], bullets: [], gems: [], drops: [], fx: [], texts: [], decals: [], cracks: [], eshots: [], pools: [], seen: {}, leadX: 0, leadY: 0, dash: null, dashT: rand(6, 12), flames: [], burn: 0, hurtFlash: 0, hitMark: 0, hbT: 0, casings: [], parts: [],
       chests: [], zones: [], flashLight: 0, looted: RUN.looted, kits: RUN.kits, helped: RUN.helped,
       searched: RUN.searched, spawnedAt: new Set(), crows: [], flies: [], leaves: [], roofA: new Map(), search: null, bolt: 0, boltT: rand(25, 45), windT: 0, windA: 0,
       clues: CLUES.map((c, i) => ({ ...c, ...CLUE_POS[i], found: i < RUN.clueIdx })), clueIdx: RUN.clueIdx,
@@ -2253,8 +2253,10 @@
     }
     // night 3: El Calcinado. An alarm, a lane of warning, then he rushes through it leaving fire
     if (S.night === 2 && live && !inBase && !safe && !S.dash && (S.dashT -= dt) <= 0) {
-      const a = Math.random() * Math.PI * 2, L = Math.hypot(VW, VH) / 2 + 140;
-      S.dash = { phase: 'warn', t: 0, a, cx: p.x, cy: p.y, L, hit: false, lastF: 0 };
+      // he comes from anywhere: often from behind you, sometimes aimed where you are going
+      const mv = Math.hypot(p.vx, p.vy) > 40, a = mv && Math.random() < 0.4 ? Math.atan2(p.vy, p.vx) + rand(-0.35, 0.35) : Math.random() * Math.PI * 2;
+      const lead = mv && Math.random() < 0.5 ? 0.8 : 0, L = Math.hypot(VW, VH) / 2 + 140;
+      S.dash = { phase: 'warn', t: 0, a, cx: p.x + p.vx * lead, cy: p.y + p.vy * lead, L, hit: false, lastF: 0 };
       SFX.alarm(); if (!S.seen.calcinado) { S.seen.calcinado = true; banner('¡El Calcinado! Apártate'); }
     }
     if (S.dash) {
@@ -2271,7 +2273,7 @@
         if (trav > D.L * 2) {
           if (!D.hit) { S.texts.push({ x: p.x, y: p.y - 34, txt: '¡ESQUIVADO!', life: 1.2, big: true }); addScrap(2); SFX.found(); }
           for (const o of S.enemies) o.torched = false;
-          S.dash = null; S.dashT = rand(30, 42);
+          S.dash = null; S.dashT = Math.random() < 0.3 ? rand(1.2, 2.5) : rand(10, 26); // sometimes he turns right back
         }
       }
     }
@@ -2660,68 +2662,129 @@
     }
   }
   // "El Calcinado": his entrance, the first time night 3 begins
-  const WARN_T = 4; // seconds of alarm before El Calcinado rushes through
-  const FIRE_T = 11.2, FIRE_LINE = 'Marco: ¡Atento! Algo salió del incendio de la gasolinera… lo llaman El Calcinado. Cuando suene la alarma, quítate de su camino.';
+  const WARN_T = 2; // seconds of alarm before El Calcinado rushes through
+  const FIRE_T = 11.6, FIRE_LINE = 'Marco: ¡Atento! Algo salió del incendio de la gasolinera… lo llaman El Calcinado. Cuando suene la alarma, quítate de su camino.';
+  // shake bursts in the cinematic: [time, strength]
+  const FIRE_HITS = [[1.2, 18], [3.8, 26], [5.7, 7], [6.6, 8], [7.5, 9], [8.4, 10], [9.35, 14]];
   function fireIntroTick(Q) {
     const f = Q.f, t = Q.t, once = (k, at, fn) => { if (!f[k] && t >= at) { f[k] = true; fn(); } };
-    once('a', 0.1, () => { SFX.crackle(1); SFX.thunder(0.2); });
-    once('b', 2.2, () => SFX.roar());
-    once('c', 3.8, () => { SFX.boom(); SFX.fireRush(); buzz(80); });
-    once('d', 5.0, () => SFX.radio());
-    once('e', 9.1, () => SFX.fireRush());
-    if (Math.random() < 0.3) SFX.crackle(0.6);
+    once('a', 0.1, () => { SFX.crackle(1); SFX.thunder(0.1); });
+    once('car', 1.2, () => { SFX.boom(); buzz(50); });
+    once('b', 2.3, () => SFX.roar());
+    once('c', 3.8, () => { SFX.boom(); SFX.fireRush(); buzz(90); });
+    once('r2', 4.1, () => SFX.roar());
+    once('d', 5.2, () => SFX.radio());
+    FIRE_HITS.slice(2, 6).forEach(([at], i) => once('st' + i, at, () => { SFX.stomp(1); SFX.slam(); }));
+    once('e', 9.35, () => { SFX.fireRush(); buzz(60); });
+    if (Math.random() < 0.35) SFX.crackle(0.7);
     if (t >= FIRE_T) endFireIntro();
   }
   function endFireIntro() { RUN.fireIntro = true; saveRun(); S.seq.phase = 'fadein'; S.seq.t = 0; }
   function skipFireIntro() { if (S && S.seq.phase === 'fire') endFireIntro(); }
+  const clamp01 = v => Math.max(0, Math.min(1, v));
   function drawFireIntro(t) {
     const g = ctx, s2 = Math.max(W / 960, H / 540), ox = (W - 960 * s2) / 2, oy = (H - 540 * s2) / 2;
     g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
-    g.save(); g.translate(ox, oy); g.scale(s2, s2);
-    const burst = t > 3.8 ? Math.max(0, 1 - (t - 3.8) / 0.9) : 0;
-    if (burst > 0) g.translate(rand(-1, 1) * 14 * burst, rand(-1, 1) * 10 * burst);
-    const grow = Math.min(1, t / 3.8), FX = 480, FY = 420;
-    // sky, smoke and a burning gas station
-    const sky = g.createLinearGradient(0, 0, 0, 420); sky.addColorStop(0, '#060308'); sky.addColorStop(1, `rgb(${60 + grow * 60},${18 + grow * 14},10)`);
-    g.fillStyle = sky; g.fillRect(-40, -40, 1040, 620);
-    for (let j = 0; j < 9; j++) { const p = (t * 0.08 + j / 9) % 1; g.fillStyle = `rgba(30,22,22,${0.35 * (1 - p)})`; g.beginPath(); g.arc(FX + Math.sin(j * 3 + t * 0.4) * 60 + p * 80, FY - 120 - p * 380, 40 + p * 90, 0, 7); g.fill(); }
-    g.fillStyle = '#0a0606';
-    for (let i = 0; i < 16; i++) { const x = i * 64 + (i % 3) * 9, h = 80 + (i * 37 % 60); g.beginPath(); g.moveTo(x - 30, 430); g.lineTo(x, 430 - h); g.lineTo(x + 30, 430); g.fill(); }
-    g.fillRect(250, 300, 460, 16); g.fillRect(270, 316, 12, 110); g.fillRect(678, 316, 12, 110);
-    g.fillStyle = '#140a08'; g.fillRect(330, 360, 70, 66); g.fillRect(560, 360, 70, 66);
-    const gr = g.createLinearGradient(0, 420, 0, 540); gr.addColorStop(0, '#1a0c06'); gr.addColorStop(1, '#050303'); g.fillStyle = gr; g.fillRect(-40, 420, 1040, 160);
+    // camera: a slow push in, a drift, shake on every impact, a whip pan when he runs
+    let shake = 0; for (const [at, k] of FIRE_HITS) if (t > at) shake = Math.max(shake, k * Math.max(0, 1 - (t - at) / 0.6));
+    const dashK = clamp01((t - 9.35) / 0.35), zoom = 1 + t * 0.014 + (t > 3.8 && t < 4.3 ? (4.3 - t) * 0.12 : 0);
+    const camX = Math.sin(t * 0.35) * 18 + dashK * dashK * 160;
+    g.save(); g.translate(ox + 480 * s2, oy + 300 * s2); g.scale(s2 * zoom, s2 * zoom); g.translate(-480 - camX + rand(-1, 1) * shake, -300 + rand(-1, 1) * shake * 0.7);
+    const grow = clamp01(t / 3.8), FX = 480, FY = 420;
+    // sky reddening with the blaze, heavy smoke
+    const sky = g.createLinearGradient(0, 0, 0, 430); sky.addColorStop(0, '#050206'); sky.addColorStop(1, `rgb(${50 + grow * 70},${16 + grow * 16},10)`);
+    g.fillStyle = sky; g.fillRect(-200, -120, 1400, 700);
+    for (let j = 0; j < 12; j++) { const p = (t * 0.07 + j / 12) % 1; g.fillStyle = `rgba(26,18,18,${0.4 * (1 - p)})`; g.beginPath(); g.arc(FX + Math.sin(j * 3 + t * 0.4) * 90 + p * 110 - 60, FY - 110 - p * 420, 40 + p * 110, 0, 7); g.fill(); }
+    // treeline and the gas station: canopy, two pumps, a car
+    g.fillStyle = '#080404';
+    for (let i = -3; i < 19; i++) { const x = i * 64 + (i % 3) * 9, h = 80 + (Math.abs(i) * 37 % 60); g.beginPath(); g.moveTo(x - 30, 430); g.lineTo(x, 430 - h); g.lineTo(x + 30, 430); g.fill(); }
+    g.fillStyle = '#0c0606'; g.fillRect(250, 296, 460, 18); g.fillRect(270, 314, 12, 116); g.fillRect(678, 314, 12, 116);
+    g.fillStyle = '#1c0e0a'; g.fillRect(250, 296, 460, 4);
+    for (const px of [360, 560]) { g.fillStyle = '#140a08'; rr(g, px, 356, 42, 70, 4); g.fill(); g.fillStyle = `rgba(255,120,40,${0.25 + grow * 0.3})`; g.fillRect(px + 8, 366, 26, 12); }
+    const carK = clamp01((t - 1.2) / 0.5);
+    g.save(); g.translate(170, 418 - Math.sin(carK * Math.PI) * 60); g.rotate(carK * 0.35);
+    g.fillStyle = '#0e0807'; rr(g, -60, -30, 120, 32, 6); g.fill(); rr(g, -34, -52, 70, 26, 6); g.fill();
+    g.fillStyle = `rgba(255,140,50,${t > 1.2 ? 0.6 : 0.1})`; g.fillRect(-28, -46, 26, 16); g.fillRect(4, -46, 26, 16);
+    g.restore();
+    // ground, with cracks that glow hotter as he comes up
+    const gr = g.createLinearGradient(0, 420, 0, 560); gr.addColorStop(0, '#1a0c06'); gr.addColorStop(1, '#050303'); g.fillStyle = gr; g.fillRect(-200, 420, 1400, 200);
+    const ck = clamp01((t - 1.8) / 2);
+    if (ck > 0) {
+      g.save(); g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
+      for (let i = 0; i < 9; i++) { const a0 = Math.PI * (0.05 + i * 0.1), len = 90 + hash(i, 5) * 260 * ck; g.strokeStyle = `rgba(255,${110 + i * 12},40,${0.35 + 0.35 * Math.sin(t * 6 + i)})`; g.lineWidth = 2.5; g.beginPath(); g.moveTo(FX, FY + 6); let x = FX, y = FY + 6; for (let k = 1; k <= 4; k++) { x = FX + Math.cos(a0) * len * k / 4 * (i % 2 ? 1 : -1) + Math.sin(k * 7 + i) * 10; y = FY + 6 + Math.sin(a0) * len * k / 4 * 0.25; g.lineTo(x, y); } g.stroke(); }
+      g.restore();
+    }
     g.save(); g.globalCompositeOperation = 'lighter';
-    stamp(g, ST_WARM, FX, FY - 40, 220 + grow * 180 + burst * 260, 0.75); stamp(g, ST_WARM, FX, FY + 10, 110 + grow * 70, 0.6);
+    stamp(g, ST_WARM, FX, FY - 40, 220 + grow * 180, 0.75); stamp(g, ST_WARM, FX, FY + 10, 110 + grow * 70, 0.6);
+    // the car goes up in a fireball
+    if (t > 1.2 && t < 3) { const k = (t - 1.2) / 1.8; stamp(g, ST_WARM, 170, 380, 60 + k * 220, 1 - k); g.fillStyle = `rgba(255,220,150,${Math.max(0, 1 - k * 2.5)})`; g.beginPath(); g.arc(170, 390, 30 + k * 120, 0, 7); g.fill(); }
     g.restore();
-    // the monster rising out of the fire
-    const rise = Math.max(0, Math.min(1, (t - 2.2) / 1.6)), dash = Math.max(0, (t - 9.1) / 0.35);
-    const zx = FX + (dash > 0 ? dash * 900 : 0), zy = FY + (1 - rise) * 190 - (t > 3.8 && dash <= 0 ? Math.sin(t * 2) * 3 : 0);
-    if (dash > 0) { g.save(); g.globalCompositeOperation = 'lighter'; for (let i = 0; i < 26; i++) { const x = FX + i * 36; if (x > zx) break; const a = Math.max(0, 1 - (t - 9.1 - i * 0.012) * 0.8); stamp(g, ST_WARM, x, FY - 10, 70, a); g.fillStyle = `rgba(255,${150 + i % 3 * 30},60,${a})`; g.beginPath(); g.moveTo(x - 14, FY); g.lineTo(x + Math.sin(t * 20 + i) * 4, FY - 30 - (i % 4) * 8); g.lineTo(x + 14, FY); g.fill(); } g.restore(); }
-    if (rise > 0 && zx < 1100) drawCalcinado(g, zx, zy, 2.2, t, dash > 0 ? 0.35 : 0, true);
-    // front flames over his legs
-    g.save(); g.translate(FX, FY + 14); g.scale(2.2 + grow * 1.4, 1.6 + grow * 1.1); drawFlamesOn(g, 0, 0, t, 1.3); g.restore();
-    g.save(); g.translate(FX - 110, FY + 10); g.scale(2 + grow, 2 + grow); drawFlamesOn(g, 0, 0, t * 1.1, 4.1); g.restore();
-    g.save(); g.translate(FX + 120, FY + 12); g.scale(1.8 + grow, 1.8 + grow); drawFlamesOn(g, 0, 0, t * 0.9, 7.3); g.restore();
-    for (let j = 0; j < 40; j++) { const p = (t * (0.3 + (j % 5) * 0.06) + j * 0.137) % 1; g.fillStyle = `rgba(255,${140 + (j % 4) * 25},60,${(1 - p) * (0.5 + grow * 0.5)})`; g.fillRect(FX + Math.sin(j * 5.1 + t) * 160 * p + (j % 7 - 3) * 20, FY - 20 - p * 420, 2.5, 2.5); }
+    if (t > 1.2 && t < 2.2) { const k = (t - 1.2); g.strokeStyle = `rgba(255,200,130,${1 - k})`; g.lineWidth = 6 * (1 - k) + 1; g.beginPath(); g.ellipse(170, 410, 40 + k * 380, (40 + k * 380) * 0.3, 0, 0, 7); g.stroke(); }
+    // debris from both blasts
+    for (const [at, bx, by, n] of [[1.2, 170, 390, 14], [3.8, FX, FY - 40, 22]]) {
+      if (t < at || t > at + 2.2) continue; const dt = t - at;
+      for (let i = 0; i < n; i++) { const a2 = -Math.PI * (0.1 + hash(i, at * 10) * 0.8), v = 220 + hash(i, 3) * 380, x = bx + Math.cos(a2) * v * dt * (i % 2 ? 1 : -1), y = by + Math.sin(a2) * v * dt + 420 * dt * dt; if (y > 440) continue;
+        g.save(); g.translate(x, y); g.rotate(dt * (5 + i)); g.fillStyle = i % 3 ? '#1a0e08' : '#3a1a0c'; g.fillRect(-4 - i % 4, -3, 8 + i % 4 * 2, 6); g.restore(); }
+    }
+    // the monster: rises reaching up, roars, walks at you, then runs
+    const rise = clamp01((t - 2.2) / 1.6), walkK = clamp01((t - 5.2) / 3.8), crouch = clamp01((t - 9.0) / 0.35) * (1 - dashK);
+    const roar = t > 3.9 && t < 5.4 ? Math.sin(clamp01((t - 3.9) / 1.5) * Math.PI) : 0;
+    let zx = FX + walkK * 30 + dashK * 950, zy = FY + (1 - rise) * 200 + walkK * 40 + crouch * 10;
+    const zsc = 2.15 + walkK * 0.55 - crouch * 0.1;
+    if (rise > 0 && rise < 1) zx += Math.sin(t * 40) * 2;
+    if (dashK > 0) { for (let k = 1; k <= 4; k++) { g.globalAlpha = 0.28 - k * 0.05; drawCalcinado(g, zx - k * 70 * dashK, zy, zsc, t, 0.4, true, { run: 1 }); } g.globalAlpha = 1;
+      g.save(); g.globalCompositeOperation = 'lighter'; for (let i = 0; i < 14; i++) { const y = zy - 20 - i * 16 - hash(i, 9) * 8; g.strokeStyle = `rgba(255,${150 + i * 6},70,${0.4 * dashK})`; g.lineWidth = 2; g.beginPath(); g.moveTo(zx - 40, y); g.lineTo(zx - 260 - hash(i, 2) * 200, y); g.stroke(); } g.restore(); }
+    // burning footprints from his walk
+    if (t > 5.7) { g.save(); g.globalCompositeOperation = 'lighter'; FIRE_HITS.slice(2, 6).forEach(([at], i) => { if (t < at) return; const k = Math.max(0, 1 - (t - at) / 3); const fx = FX + (at - 5.2) / 3.8 * 30 + (i % 2 ? 20 : -20), fy = FY + (at - 5.2) / 3.8 * 40 + 8; stamp(g, ST_WARM, fx, fy, 50, k); g.fillStyle = `rgba(255,180,80,${k})`; g.beginPath(); g.ellipse(fx, fy, 16, 5, 0, 0, 7); g.fill(); }); g.restore(); }
+    if (rise > 0 && zx < 1300) drawCalcinado(g, zx, zy, zsc, t, dashK > 0 ? 0.4 : crouch * 0.3, true, { up: rise < 1 ? 1 : Math.max(0, 1 - (t - 3.8) * 3), roar, walk: walkK > 0 && walkK < 1 ? Math.sin(t * 5.3) : 0, run: dashK > 0 ? 1 : 0 });
+    // roar: rings of heat from his mouth
+    if (roar > 0.05) for (let k = 0; k < 3; k++) { const p = (t * 1.6 + k / 3) % 1; g.strokeStyle = `rgba(255,190,120,${(1 - p) * roar * 0.6})`; g.lineWidth = 3; g.beginPath(); g.arc(zx + 4 * zsc, zy - 100 * zsc, 20 + p * 160, -0.9, 0.9); g.stroke(); g.beginPath(); g.arc(zx + 4 * zsc, zy - 100 * zsc, 20 + p * 160, Math.PI - 0.9, Math.PI + 0.9); g.stroke(); }
+    // flames in front of his legs
+    const fire = 1 + (t > 3.8 ? Math.max(0, 1 - (t - 3.8)) * 0.8 : 0);
+    g.save(); g.translate(FX, FY + 14); g.scale((2.2 + grow * 1.4) * fire, (1.6 + grow * 1.1) * fire); drawFlamesOn(g, 0, 0, t, 1.3); g.restore();
+    g.save(); g.translate(FX - 120, FY + 12); g.scale(2 + grow, 2 + grow); drawFlamesOn(g, 0, 0, t * 1.1, 4.1); g.restore();
+    g.save(); g.translate(FX + 130, FY + 14); g.scale(1.8 + grow, 1.8 + grow); drawFlamesOn(g, 0, 0, t * 0.9, 7.3); g.restore();
+    if (t > 1.3) { g.save(); g.translate(170, 430); g.scale(2.2, 2.2); drawFlamesOn(g, 0, 0, t * 1.2, 2.7); g.restore(); }
+    // embers: rising always, bursting outward at the blast
+    for (let j = 0; j < 46; j++) { const p = (t * (0.3 + (j % 5) * 0.06) + j * 0.137) % 1; g.fillStyle = `rgba(255,${140 + (j % 4) * 25},60,${(1 - p) * (0.5 + grow * 0.5)})`; g.fillRect(FX + Math.sin(j * 5.1 + t) * 170 * p + (j % 7 - 3) * 20, FY - 20 - p * 440, 2.5, 2.5); }
+    if (t > 3.8 && t < 6) { const dt = t - 3.8; for (let j = 0; j < 50; j++) { const a2 = j / 50 * Math.PI * 2, v = 200 + hash(j, 4) * 420; g.fillStyle = `rgba(255,${170 + j % 3 * 25},90,${Math.max(0, 1 - dt / 1.6)})`; g.fillRect(FX + Math.cos(a2) * v * dt, FY - 70 + Math.sin(a2) * v * dt * 0.7 + 90 * dt * dt, 3, 3); } }
+    // shockwave of the blast
+    if (t > 3.8 && t < 4.8) { const k = t - 3.8; g.strokeStyle = `rgba(255,230,170,${1 - k})`; g.lineWidth = 10 * (1 - k) + 1; g.beginPath(); g.ellipse(FX, FY, 40 + k * 620, (40 + k * 620) * 0.32, 0, 0, 7); g.stroke(); }
+    // heat haze
+    g.strokeStyle = 'rgba(255,200,150,.022)'; g.lineWidth = 2; for (let i = 0; i < 6; i++) { const y = 250 + i * 24; g.beginPath(); for (let x = 360; x <= 600; x += 20) g.lineTo(x, y + Math.sin(x * 0.05 + t * 6 + i) * 3); g.stroke(); }
     g.restore();
-    if (burst > 0) { g.fillStyle = `rgba(255,190,110,${burst * burst * 0.6})`; g.fillRect(0, 0, W, H); }
-    // letterbox, title and Marco on the radio
+    // flashes
+    const flash = Math.max(t > 3.8 ? Math.max(0, 1 - (t - 3.8) / 0.7) : 0, t > 1.2 ? Math.max(0, 1 - (t - 1.2) / 0.4) * 0.6 : 0);
+    if (flash > 0) { g.fillStyle = `rgba(255,190,110,${flash * flash * 0.65})`; g.fillRect(0, 0, W, H); }
+    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.62); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.65)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+    // letterbox, the name burning in letter by letter, Marco on the radio
     const bh = Math.min(70, H * 0.09); g.fillStyle = '#000'; g.fillRect(0, 0, W, bh); g.fillRect(0, H - bh, W, bh);
     const base = Math.min(W, H);
     g.textAlign = 'center'; g.textBaseline = 'middle';
     if (t > 4.1 && t < 9.4) {
-      const k = Math.min(1, (t - 4.1) / 0.35), a = Math.min(k, (9.4 - t) / 0.4), sc = 1 + (1 - k) * 0.6;
-      g.save(); g.globalAlpha = a; g.translate(W / 2, Math.max(bh + base * 0.09, H * 0.19)); g.scale(sc, sc);
-      g.font = `700 ${Math.max(10, base * 0.024)}px "IBM Plex Mono", monospace`; g.fillStyle = '#ffb070'; g.fillText('N U E V O   E N E M I G O   ·   N O C H E   3', 0, base * 0.095);
+      const NAME = 'El Calcinado', shown = Math.min(NAME.length, Math.floor((t - 4.1) * 16)), a = Math.min(1, (9.4 - t) / 0.4);
+      const cy = Math.max(bh + base * 0.09, H * 0.19);
+      g.save(); g.globalAlpha = a;
       g.font = `400 ${Math.round(base * 0.15)}px "Pirata One", Georgia, serif`;
-      g.fillStyle = '#2a0600'; g.fillText('El Calcinado', 4, 5);
-      const tg = g.createLinearGradient(0, -base * 0.07, 0, base * 0.07); tg.addColorStop(0, '#fff2b0'); tg.addColorStop(0.5, '#ffa030'); tg.addColorStop(1, '#c2301a');
-      g.fillStyle = tg; g.fillText('El Calcinado', 0, 0);
+      const full = g.measureText(NAME).width; let x = W / 2 - full / 2;
+      for (let i = 0; i < shown; i++) {
+        const ch = NAME[i], w = g.measureText(ch).width, age = (t - 4.1) - i / 16, pop = Math.max(0, 1 - age * 4);
+        g.save(); g.translate(x + w / 2, cy - pop * 16); g.scale(1 + pop * 0.6, 1 + pop * 0.6);
+        g.fillStyle = '#2a0600'; g.fillText(ch, 3, 4);
+        const tg = g.createLinearGradient(0, -base * 0.07, 0, base * 0.07); tg.addColorStop(0, '#fff2b0'); tg.addColorStop(0.5, `rgb(255,${140 + Math.sin(t * 9 + i) * 30},40)`); tg.addColorStop(1, '#c2301a');
+        g.fillStyle = tg; g.fillText(ch, 0, 0);
+        if (pop > 0) { g.globalCompositeOperation = 'lighter'; stamp(g, ST_WARM, 0, 0, 60 * pop + 20, pop); g.globalCompositeOperation = 'source-over'; }
+        g.restore(); x += w;
+      }
+      g.globalCompositeOperation = 'lighter';
+      for (let j = 0; j < 24; j++) { const p = (t * 0.7 + j * 0.21) % 1; g.fillStyle = `rgba(255,${150 + j % 3 * 30},60,${(1 - p) * 0.9})`; g.fillRect(W / 2 - full / 2 + hash(j, 1) * full, cy + base * 0.05 - p * base * 0.16, 2, 2); }
+      g.globalCompositeOperation = 'source-over';
+      if (t > 4.9) { g.globalAlpha = a * Math.min(1, (t - 4.9) / 0.4); g.font = `700 ${Math.max(10, base * 0.024)}px "IBM Plex Mono", monospace`; g.fillStyle = '#ffb070'; g.fillText('N U E V O   E N E M I G O   ·   N O C H E   3', W / 2, cy + base * 0.095); }
       g.restore();
     }
-    if (t > 5 && t < 10.4) {
-      const n = Math.min(FIRE_LINE.length, Math.floor((t - 5) * 38)), w = Math.min(W - 32, 720), h = 74, x = (W - w) / 2, y = H - bh - h - 14;
-      g.globalAlpha = Math.min(1, (10.4 - t) / 0.4);
+    if (t > 5.2 && t < 10.4) {
+      const n = Math.min(FIRE_LINE.length, Math.floor((t - 5.2) * 40)), w = Math.min(W - 32, 720), h = 74, x = (W - w) / 2, y = H - bh - h - 14;
+      g.globalAlpha = Math.min(1, (10.4 - t) / 0.4, (t - 5.2) / 0.25);
       g.fillStyle = 'rgba(12,10,16,.9)'; rr(g, x, y, w, h, 4); g.fill(); g.strokeStyle = 'rgba(180,220,120,.35)'; g.lineWidth = 1; g.stroke();
       g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#b5d86a'; g.font = `700 11px "IBM Plex Mono", monospace`; g.fillText('RADIO · MARCO, DESDE EL REFUGIO', x + 14, y + 10);
       g.fillStyle = '#efe6d4'; g.font = `400 13px "IBM Plex Mono", monospace`;
@@ -2735,21 +2798,45 @@
     g.fillText(TOUCH ? 'toca para saltar' : 'clic o Espacio para saltar', W - 16, bh / 2);
     if (t > FIRE_T - 0.8) { g.fillStyle = `rgba(0,0,0,${Math.min(1, (t - (FIRE_T - 0.8)) / 0.8)})`; g.fillRect(0, 0, W, H); }
   }
-  // the burning monster, charcoal skin with glowing cracks; sc = size, lean when running
-  function drawCalcinado(g, x, y, sc, t, lean, big) {
-    g.save(); g.translate(x, y); g.scale(sc, sc); if (lean) g.rotate(lean);
-    g.fillStyle = '#0b0605'; g.strokeStyle = '#0b0605'; g.lineCap = 'round';
-    g.lineWidth = 9; g.beginPath(); g.moveTo(-6, -40); g.lineTo(-10 + Math.sin(t * 9) * 4, 0); g.moveTo(6, -40); g.lineTo(10 - Math.sin(t * 9) * 4, 0); g.stroke();
-    g.beginPath(); g.ellipse(0, -62, 18, 26, 0, 0, 7); g.fill();
-    g.lineWidth = 8; g.beginPath(); g.moveTo(-14, -76); g.lineTo(-30, -52 + Math.sin(t * 5) * 4); g.lineTo(-26, -34); g.moveTo(14, -76); g.lineTo(32, -56 + Math.cos(t * 5) * 4); g.lineTo(30, -36); g.stroke();
-    g.beginPath(); g.arc(2, -98, 12, 0, 7); g.fill();
-    g.save(); g.globalCompositeOperation = 'lighter';
-    g.strokeStyle = `rgba(255,${130 + Math.sin(t * 7) * 40},40,.95)`; g.lineWidth = 1.6;
-    g.beginPath(); g.moveTo(-8, -84); g.lineTo(-2, -70); g.lineTo(-10, -56); g.lineTo(-4, -44); g.moveTo(10, -80); g.lineTo(4, -64); g.lineTo(12, -50); g.moveTo(-2, -104); g.lineTo(3, -96); g.lineTo(-3, -90); g.moveTo(-26, -50); g.lineTo(-22, -40); g.moveTo(28, -54); g.lineTo(26, -42); g.stroke();
-    g.fillStyle = '#fff4c0'; g.fillRect(-4, -101, 4, 3); g.fillRect(4, -101, 4, 3);
-    stamp(g, ST_WARM, 2, -99, 10, 0.9); stamp(g, ST_WARM, 0, -62, 16, 0.5);
+  // the burning monster, charcoal skin with glowing cracks. pose: up (arms raised), roar, walk (-1..1), run
+  function drawCalcinado(g, x, y, sc, t, lean, big, pose = {}) {
+    const up = pose.up || 0, roar = pose.roar || 0, run = pose.run || 0, wk = pose.walk ?? Math.sin(t * 9);
+    g.save(); g.translate(x, y); g.scale(pose.flip ? -sc : sc, sc); if (lean) g.rotate(lean);
+    if (big) { g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_WARM, 0, -62, 60 + roar * 40 + Math.sin(t * 12) * 5, 0.35 + roar * 0.4); g.restore(); }
+    g.fillStyle = '#0b0605'; g.strokeStyle = '#0b0605'; g.lineCap = 'round'; g.lineJoin = 'round';
+    // legs
+    const st = run ? Math.sin(t * 30) * 12 : wk * 7;
+    g.lineWidth = 9; g.beginPath(); g.moveTo(-6, -40); g.lineTo(-8 + st * 0.3, -20); g.lineTo(-10 + st, 0); g.moveTo(6, -40); g.lineTo(8 - st * 0.3, -20); g.lineTo(10 - st, 0); g.stroke();
+    // torso heaving with the roar
+    g.save(); g.translate(0, -62); g.scale(1 + roar * 0.08, 1 + roar * 0.05 + Math.sin(t * 3) * 0.02); g.beginPath(); g.ellipse(0, 0, 18, 26, 0, 0, 7); g.fill(); g.restore();
+    // arms: hanging, raised overhead while climbing out, thrown wide when he roars, back when he runs
+    const arm = sd => {
+      const idle = [sd * 30, -52 + Math.sin(t * 5 + sd) * 4, sd * 26, -34];
+      const upP = [sd * 22, -112 + Math.sin(t * 16 + sd) * 4, sd * 14, -140];
+      const roarP = [sd * 42, -88, sd * 60, -104 + Math.sin(t * 20 + sd) * 3];
+      const runP = [-24 + sd * 4, -60, -40 + sd * 4, -48];
+      const mix = (A, B, k) => A.map((v, i) => v + (B[i] - v) * k);
+      let P = mix(idle, upP, up); P = mix(P, roarP, roar); if (run) P = runP;
+      g.lineWidth = 8; g.beginPath(); g.moveTo(sd * 14, -76); g.lineTo(P[0], P[1]); g.lineTo(P[2], P[3]); g.stroke();
+      return [P[2], P[3]];
+    };
+    const hL = arm(-1), hR = arm(1);
+    // head thrown back on the roar
+    g.save(); g.translate(2, -98 - roar * 3); g.rotate(-roar * 0.25 + (run ? 0.2 : 0)); g.beginPath(); g.arc(0, 0, 12, 0, 7); g.fill();
+    g.globalCompositeOperation = 'lighter';
+    g.fillStyle = '#fff4c0'; g.fillRect(-6, -3, 4, 3); g.fillRect(2, -3, 4, 3);
+    if (roar > 0.05) { g.fillStyle = `rgba(255,200,120,${roar})`; g.beginPath(); g.ellipse(0, 6, 5, 2 + roar * 5, 0, 0, 7); g.fill(); }
+    stamp(g, ST_WARM, 0, 0, 12 + roar * 8, 0.9);
     g.restore();
-    for (const [fx, fy, fs] of [[2, -110, 0.5], [-14, -80, 0.38], [16, -80, 0.38], [0, -45, 0.32]]) { g.save(); g.translate(fx, fy); g.scale(fs, fs); drawFlamesOn(g, 0, 0, t * 1.3 + fx, fx * 0.3); g.restore(); }
+    // cracks of lava all over the body
+    g.save(); g.globalCompositeOperation = 'lighter';
+    g.strokeStyle = `rgba(255,${130 + Math.sin(t * 7) * 40},40,.95)`; g.lineWidth = 1.6 + roar;
+    g.beginPath(); g.moveTo(-8, -84); g.lineTo(-2, -70); g.lineTo(-10, -56); g.lineTo(-4, -44); g.moveTo(10, -80); g.lineTo(4, -64); g.lineTo(12, -50); g.moveTo(-12, -66); g.lineTo(-4, -62); g.moveTo(6, -46); g.lineTo(-2, -40); g.stroke();
+    stamp(g, ST_WARM, 0, -62, 16 + roar * 10, 0.5);
+    g.restore();
+    // flames: head, shoulders, hands
+    const fs = 1 + roar * 0.6 + run * 0.3;
+    for (const [fx, fy, s0] of [[2, -110 - roar * 3, 0.5], [-14, -80, 0.36], [16, -80, 0.36], [hL[0], hL[1], 0.26], [hR[0], hR[1], 0.26], [0, -45, 0.3]]) { g.save(); g.translate(fx, fy); g.scale(s0 * fs, s0 * fs); drawFlamesOn(g, 0, 0, t * 1.3 + fx, fx * 0.3); g.restore(); }
     g.restore();
   }
   function goMoment() {
@@ -4135,7 +4222,7 @@
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
         for (let i = 1; i <= 6; i++) stamp(ctx, ST_WARM, x - ux * i * 22, y - uy * i * 22 - 20, 50 - i * 5, 1 - i * 0.14);
         ctx.restore();
-        drawCalcinado(ctx, x, y + 14, 0.34, S.t, ux >= 0 ? 0.5 : -0.5, false);
+        drawCalcinado(ctx, x, y + 14, 0.34, S.t, 0.5, false, { run: 1, flip: ux < 0 });
       }
     }
     // acid: glowing pools, blobs in flight with their landing mark, spit and pounce warnings
