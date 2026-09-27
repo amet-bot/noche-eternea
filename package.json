@@ -1,6 +1,6 @@
 {
   "name": "noche-eterna",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "private": true,
   "description": "Noche Eterna: sobrevive cinco noches y rescata a Lucía.",
   "scripts": { "start": "node server.js" },

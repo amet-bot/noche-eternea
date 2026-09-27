@@ -419,13 +419,42 @@
   const TOUCH = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch (err) { return false; } })();
   if (TOUCH) document.body.classList.add('touch');
   const LS = TOUCH ? 4 : 2;           // light and fog layers render at 1/LS of the screen
-  const PCAP = TOUCH ? 90 : 300;     // particle budget
+  let PCAP = TOUCH ? 90 : 300;       // particle budget (lowered by the quality level)
   // Saved on this device: options, lifetime stats and achievements, and the current campaign
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (err) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (err) {} },
   };
   const OPT = Object.assign({ music: true, sfx: true, vib: true, fps: TOUCH ? 45 : 60 }, store.get('ne_opts', {}));
+  // Phones: the quality follows what the device can keep up with. Every few seconds of
+  // play we measure the real frame rate and step down (resolution, fog, detail, 30 FPS)
+  // when it falls short, or back up when there is room. The level is remembered.
+  const QL = [
+    { rs: 0.85, fog: true, fx: true, pc: 90 },
+    { rs: 0.72, fog: true, fx: true, pc: 70 },
+    { rs: 0.62, fog: false, fx: false, pc: 50 },
+    { rs: 0.52, fog: false, fx: false, pc: 40, fps: 30 },
+  ];
+  let QI = TOUCH ? Math.max(0, Math.min(QL.length - 1, store.get('ne_q', 0) | 0)) : 0;
+  let LOWFX = TOUCH && !QL[QI].fx;
+  if (TOUCH) PCAP = QL[QI].pc;
+  const PQ = { t0: 0, n: 0, warm: true, last: 0, good: 0, fails: [0, 0, 0, 0] };
+  function setQuality(i, t) {
+    QI = i; LOWFX = TOUCH && !QL[i].fx; PCAP = QL[i].pc; PQ.last = t; PQ.good = 0;
+    store.set('ne_q', i); resize();
+  }
+  function watchQuality(t) {
+    if (!TOUCH || S.state !== 'play' || document.hidden) { PQ.t0 = 0; PQ.warm = true; return; }
+    if (!PQ.t0) { PQ.t0 = t; PQ.n = 0; return; }
+    PQ.n++;
+    if (t - PQ.t0 < 3000) return;
+    const fps = PQ.n * 1000 / (t - PQ.t0), want = Math.min(OPT.fps, QL[QI].fps || 99);
+    PQ.t0 = t; PQ.n = 0;
+    if (PQ.warm) { PQ.warm = false; return; }
+    if (fps < want * 0.8 && QI < QL.length - 1) { PQ.fails[QI]++; setQuality(QI + 1, t); }
+    else if (fps > want * 0.97 && QI > 0 && PQ.fails[QI - 1] < 2 && t - PQ.last > 30000) { if (++PQ.good >= 4) setQuality(QI - 1, t); }
+    else PQ.good = 0;
+  }
   const saveOpts = () => store.set('ne_opts', OPT);
   const META_ZERO = { kills: 0, bestCombo: 0, bestNight: 0, bestLevel: 0, hordes: 0, stealth: 0, boss: 0, elites: 0, lore: 0, hospital: 0, ach: {} };
   const META = Object.assign({}, META_ZERO, store.get('ne_meta', {}));
@@ -458,7 +487,7 @@
   let W = 0, H = 0, Z = 1.4, VW = 0, VH = 0;
 
   function resize() {
-    const dpr = TOUCH ? 0.85 : Math.min(2, window.devicePixelRatio || 1);
+    const dpr = TOUCH ? QL[QI].rs : Math.min(2, window.devicePixelRatio || 1);
     W = window.innerWidth; H = window.innerHeight;
     cvs.width = W * dpr; cvs.height = H * dpr;
     cvs.style.width = W + 'px'; cvs.style.height = H + 'px';
@@ -510,7 +539,7 @@
       const nb = C.createBuffer(1, C.sampleRate * 2, C.sampleRate), d = nb.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       AU.noise = nb;
-      const len = C.sampleRate * 3.2, ir = C.createBuffer(2, len, C.sampleRate);
+      const len = C.sampleRate * (TOUCH ? 1.3 : 3.2), ir = C.createBuffer(2, len, C.sampleRate);
       for (let ch = 0; ch < 2; ch++) { const x = ir.getChannelData(ch); for (let i = 0; i < len; i++) x[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
       AU.rev = C.createConvolver(); AU.rev.buffer = ir;
       const wet = C.createGain(); wet.gain.value = 0.4; AU.rev.connect(wet); wet.connect(AU.master);
@@ -1508,7 +1537,7 @@
     let c = chunks.get(k);
     if (c) { chunks.delete(k); chunks.set(k, c); return c; }
     c = genChunk(cx, cy); chunks.set(k, c);
-    if (chunks.size > 42) chunks.delete(chunks.keys().next().value);
+    if (chunks.size > (TOUCH ? 24 : 42)) chunks.delete(chunks.keys().next().value);
     return c;
   }
   function genChunk(cx, cy) {
@@ -1523,10 +1552,10 @@
       g.beginPath(); g.ellipse(x, y, 30 + r() * 50, 20 + r() * 40, r() * 3, 0, 7); g.fill();
     }
     const spk = ['#26301f', '#141a12', '#2f3824', '#3a3222', '#1a1a14', '#232b1d'];
-    for (let i = 0, n = TOUCH ? 700 : 1800; i < n; i++) { g.fillStyle = pick(spk); g.globalAlpha = 0.35 + r() * 0.4; g.fillRect(r() * CH, r() * CH, 1 + r() * 2.5, 1 + r() * 2); }
+    for (let i = 0, n = TOUCH ? 450 : 1800; i < n; i++) { g.fillStyle = pick(spk); g.globalAlpha = 0.35 + r() * 0.4; g.fillRect(r() * CH, r() * CH, 1 + r() * 2.5, 1 + r() * 2); }
     g.globalAlpha = 1;
     const gcol = ['#2f4228', '#3a5230', '#243420', '#44603a'];
-    for (let i = 0, nb = TOUCH ? 170 : 320; i < nb; i++) {
+    for (let i = 0, nb = TOUCH ? 120 : 320; i < nb; i++) {
       const x = r() * CH, y = r() * CH;
       if (vnoise((ox + x) / 420, (oy + y) / 420) > 0.62) continue;
       g.strokeStyle = pick(gcol); g.lineWidth = 1.2;
@@ -2967,7 +2996,7 @@
     }
     ctx.fillStyle = fl ? '#fff' : e.shirt;
     ctx.beginPath(); ctx.ellipse(x, y + r * 0.05, r * 0.72, r * 0.72, 0, 0, 7); ctx.fill();
-    if (!fl) {
+    if (!fl && !LOWFX) {
       ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1.2; ctx.stroke();
       ctx.fillStyle = 'rgba(120,30,30,.6)'; ctx.fillRect(x - r * 0.35, y + r * 0.05, r * 0.25, r * 0.35); ctx.fillRect(x + r * 0.15, y - r * 0.3, r * 0.2, r * 0.2);
       ctx.fillStyle = e.skin; ctx.beginPath(); ctx.moveTo(x - r * 0.1, y + r * 0.55); ctx.lineTo(x + r * 0.2, y + r * 0.2); ctx.lineTo(x + r * 0.35, y + r * 0.6); ctx.fill();
@@ -2998,7 +3027,7 @@
     }
     ctx.fillStyle = fl ? '#fff' : e.skin;
     ctx.beginPath(); ctx.arc(hx, hy, r * 0.5, 0, 7); ctx.fill();
-    if (!fl) {
+    if (!fl && !LOWFX) {
       ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1.2; ctx.stroke();
       ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.arc(hx + r * 0.1, hy + r * 0.1, r * 0.35, 0, Math.PI); ctx.fill();
       ctx.fillStyle = '#2a2018'; ctx.fillRect(hx - r * 0.35, hy - r * 0.5, r * 0.25, r * 0.15); ctx.fillRect(hx + r * 0.05, hy - r * 0.52, r * 0.3, r * 0.12);
@@ -3254,6 +3283,15 @@
   }
 
   // Night: dark layer with holes for flashlight, fires, spotlights, flashes
+  const CONES = new Map();
+  function coneSprite(spread) {
+    let c = CONES.get(spread); if (c) return c;
+    c = document.createElement('canvas'); c.width = 256; c.height = Math.ceil(Math.sin(spread) * 512) + 4;
+    const g = c.getContext('2d'), cy = c.height / 2, gr = g.createRadialGradient(0, cy, 6, 0, cy, 256);
+    gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.7, 'rgba(0,0,0,.6)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(0, cy); g.arc(0, cy, 256, -spread, spread); g.closePath(); g.fill();
+    CONES.set(spread, c); return c;
+  }
   function drawLighting(camps, t, feats = []) {
     const p = S.p, k = Z / LS;
     const sx = x => (x - camX) * k, sy = y => (y - camY) * k;
@@ -3263,7 +3301,7 @@
     lg.fillStyle = `rgba(3, 3, 10, ${bolt ? 0.42 : 0.8})`; lg.fillRect(0, 0, light.width, light.height);
     lg.globalCompositeOperation = 'destination-out';
     const hole = (x, y, r, a) => stamp(lg, ST_HOLE, x, y, r, Math.min(1, a));
-    const cone = (x, y, ang, len, spread, a) => { const g = lg.createRadialGradient(x, y, 10 * k, x, y, len); g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(0.7, `rgba(0,0,0,${a * 0.6})`); g.addColorStop(1, 'rgba(0,0,0,0)'); lg.fillStyle = g; lg.beginPath(); lg.moveTo(x, y); lg.arc(x, y, len, ang - spread, ang + spread); lg.closePath(); lg.fill(); };
+    const cone = (x, y, ang, len, spread, a) => { const c = coneSprite(spread), sc = len / 256; lg.save(); lg.translate(x, y); lg.rotate(ang); lg.globalAlpha = Math.min(1, a); lg.drawImage(c, 0, -c.height / 2 * sc, 256 * sc, c.height * sc); lg.restore(); };
     const px = sx(p.x), py = sy(p.y - 4);
     if (S.flashOn) { hole(px, py, 150 * k, 0.97); cone(px, py, p.aim, 380 * k, 0.42, 0.95); }
     else hole(px, py, 105 * k, 0.8);
@@ -3623,8 +3661,8 @@
     if (baseOn) fogHoles.push([BASE_FIRE.x - camX, BASE_FIRE.y - 20 - camY, 240 * fireFlicker(BASE_FIRE, t)]);
     fogHoles.push([p.x - camX, p.y - 6 - camY, 170]);
     for (const f of feats) if (f.light && lampOn(f, t)) fogHoles.push([f.light.x - camX, f.light.y - camY, 150]);
-    buildFog(t, fogHoles);
-    ctx.globalAlpha = 0.4; ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1;
+    const fogOn = !TOUCH || QL[QI].fog;
+    if (fogOn) { buildFog(t, fogHoles); ctx.globalAlpha = 0.4; ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1; }
 
     drawLighting(camps, t, feats);
     if (!TOUCH) { ctx.globalAlpha = 0.07; ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1; }
@@ -4249,12 +4287,14 @@
     const fd = prevT ? t - prevT : 16.7; prevT = t;
     // static screens (pause, shop, perks, death) and the phone menu need far fewer frames
     const still = S.state !== 'play' && S.state !== 'cine' && S.state !== 'menu';
-    const iv = 1000 / (still ? 15 : S.state === 'menu' && TOUCH ? 30 : OPT.fps);
+    const cap = TOUCH && QL[QI].fps ? Math.min(OPT.fps, QL[QI].fps) : OPT.fps;
+    const iv = 1000 / (still ? 15 : S.state === 'menu' && TOUCH ? 30 : cap);
     acc += fd;
     if (acc < iv - 2) return;
     acc = Math.min(Math.max(0, acc - iv), iv);
     let dt = Math.min(0.05, (t - last) / 1000);
     last = t;
+    watchQuality(t);
     if (S.state === 'cine') {
       updateCine(dt);
       if (S.state === 'cine') drawCine(); else render();
