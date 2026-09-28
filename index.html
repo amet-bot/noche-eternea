@@ -592,7 +592,7 @@
       const echo = (d, dur, gain) => { noise({ t0: t + d, dur, f: 1100, to: 220, gain, attack: 0.012, rev: 0.7 }); };
       const click = (d, f, gain, q = 9) => noise({ t0: t + d, dur: 0.02, f, type: 'bandpass', q, gain });
       const shell = (d, heavy) => { if (!throttle('shell', 70)) return; const f = rand(3800, 6200) * (heavy ? 0.7 : 1); tone({ t0: t + d, f, dur: 0.06, type: 'triangle', gain: 0.03 }); tone({ t0: t + d + rand(0.05, 0.09), f: f * 1.13, dur: 0.04, type: 'triangle', gain: 0.018 }); };
-      if (id === 'mp5') { crack(7000, 0.016, 0.32); blast(4200, 650, 0.085, 0.46, 0.12); thump(185, 60, 0.07, 0.42); click(0.03, 3300, 0.07); echo(0.13, 0.2, 0.05); shell(rand(0.26, 0.4)); }
+      if (id === 'mp5') { crack(4200, 0.012, 0.16); blast(2800, 420, 0.12, 0.6, 0.16); thump(135, 42, 0.11, 0.72); thump(70, 32, 0.12, 0.35, 'triangle'); click(0.028, 1700, 0.16, 5); click(0.05, 2600, 0.07); echo(0.15, 0.26, 0.07); shell(rand(0.28, 0.42), true); }
       if (id === 'ak') { crack(6000, 0.02, 0.5); blast(3600, 520, 0.13, 0.6, 0.18); thump(150, 42, 0.11, 0.7); click(0.045, 2600, 0.1); echo(0.16, 0.28, 0.08); shell(rand(0.3, 0.45)); }
       if (id === 'shotgun') {
         crack(6500, 0.035, 0.9); blast(2600, 140, 0.6, 1, 0.5); thump(118, 30, 0.45, 1.1); thump(58, 26, 0.55, 0.9, 'triangle');
@@ -616,6 +616,7 @@
       const clk = (d, f, g, q = 7) => noise({ t0: t + d, dur: 0.025, f, type: 'bandpass', q, gain: g });
       if (id === 'shotgun') { const n = 4; for (let k = 0; k < n; k++) { const d = 0.15 + k * (dur - 0.35) / n; clk(d, 1600, 0.3, 4); tone({ t0: t + d, f: 160, to: 110, dur: 0.04, gain: 0.12 }); } return; }
       if (id === 'launcher') { clk(0, 1200, 0.35, 3); clk(dur * 0.6, 900, 0.45, 3); tone({ t0: t + dur * 0.6, f: 120, to: 80, dur: 0.08, gain: 0.25 }); return; }
+      if (id === 'mp5') { clk(0, 1500, 0.4, 4); noise({ t0: t + 0.04, dur: 0.28, f: 900, to: 1600, type: 'bandpass', q: 2, gain: 0.16 }); noise({ t0: t + dur * 0.3, dur: 0.2, f: 700, type: 'bandpass', q: 0.8, gain: 0.06 }); noise({ t0: t + dur * 0.55, dur: 0.22, f: 1600, to: 900, type: 'bandpass', q: 2, gain: 0.14 }); clk(dur * 0.66, 1200, 0.55, 3); tone({ t0: t + dur * 0.66, f: 150, to: 85, dur: 0.08, gain: 0.3 }); return; }
       clk(0, 2400, 0.32); noise({ t0: t + 0.03, dur: 0.12, f: 1400, type: 'bandpass', q: 1.5, gain: 0.12 });
       noise({ t0: t + dur * 0.3, dur: 0.2, f: 700, type: 'bandpass', q: 0.8, gain: 0.06 });
       clk(dur * 0.62, 1800, 0.38); tone({ t0: t + dur * 0.62, f: 190, to: 120, dur: 0.05, gain: 0.18 });
@@ -624,6 +625,7 @@
     reloadEnd(id) {
       if (!canSfx()) return; const t = now();
       if (id === 'shotgun') { noise({ t0: t, dur: 0.045, f: 1300, type: 'bandpass', q: 3, gain: 0.45 }); noise({ t0: t + 0.13, dur: 0.05, f: 2100, type: 'bandpass', q: 4, gain: 0.5 }); return; }
+      if (id === 'mp5') { noise({ t0: t, dur: 0.05, f: 2600, type: 'bandpass', q: 5, gain: 0.45 }); noise({ t0: t + 0.1, dur: 0.06, f: 1500, type: 'bandpass', q: 4, gain: 0.55 }); tone({ t0: t + 0.1, f: 130, to: 80, dur: 0.07, gain: 0.25 }); return; }
       if (id === 'deagle') { noise({ t0: t, dur: 0.05, f: 2600, type: 'bandpass', q: 5, gain: 0.5 }); tone({ t0: t, f: 220, to: 140, dur: 0.05, gain: 0.15 }); return; }
       noise({ t0: t, dur: 0.04, f: 3200, type: 'bandpass', q: 6, gain: 0.4 }); noise({ t0: t + 0.08, dur: 0.05, f: 2000, type: 'bandpass', q: 6, gain: 0.45 }); tone({ t0: t + 0.08, f: 170, to: 110, dur: 0.05, gain: 0.15 });
     },
@@ -1009,7 +1011,8 @@
 
   const ORDER = ['mp5', 'shotgun', 'ak', 'deagle', 'launcher'];
   const GUNS = {
-    mp5:      { name: 'MP5',           dmg: 10, cd: 0.085, mag: 80, reload: 1.8, speed: 820, spread: 0.08, pellets: 1, pierce: 1, range: 480, knock: 70, shake: 1.2 },
+    // the Thompson M1928 with a 100-round drum (internal id kept as 'mp5' so saved games still work)
+    mp5:      { name: 'Thompson',      dmg: 13, cd: 0.095, mag: 100, reload: 2.5, speed: 780, spread: 0.09, pellets: 1, pierce: 1, range: 470, knock: 95, shake: 1.6 },
     shotgun:  { name: 'Escopeta',      dmg: 24, cd: 0.75, mag: 60, reload: 2.2, speed: 720, spread: 0.4,  pellets: 9, pierce: 2, range: 400, knock: 460, shake: 10, heavy: true },
     ak:       { name: 'AK-47',         dmg: 21, cd: 0.09, mag: 80, reload: 2.2, speed: 900, spread: 0.09, pellets: 1, pierce: 2, range: 580, knock: 120, shake: 2.6 },
     deagle:   { name: 'Desert Eagle',  dmg: 52, cd: 0.5,  mag: 60, reload: 1.8, speed: 940, spread: 0.02, pellets: 1, pierce: 4, range: 620, knock: 300, shake: 5, heavy: true },
@@ -1835,7 +1838,7 @@
   // CAMPAIGN: what carries over from one night to the next
   // ======================================================================
   const AMMO = {
-    mp5:      { res: 345, pack: 80, noise: 420 },
+    mp5:      { res: 400, pack: 100, noise: 460 },
     shotgun:  { res: 205, pack: 60, noise: 760 },
     ak:       { res: 265, pack: 80, noise: 650 },
     deagle:   { res: 205, pack: 60, noise: 700 },
@@ -3197,7 +3200,7 @@
     S.fx.push({ type: 'ring', x: p.x, y: p.y, life: 0.9, max: 0.9 });
     S.fx.push({ type: 'ring', x: p.x, y: p.y, life: 0.6, max: 0.6, thin: true });
     radio(S.obj === 'return' ? 'Encontraste la marca, pero no llegaste al campamento. Esta vez llega a la fogata.' : N.brief + (N.side && !RUN.questDone.has(S.night) ? ' ' + N.side.text : ''));
-    if (S.night === 0) radio('Clic dispara, 1 y 2 cambian entre MP5 y escopeta, R recarga. Shift para correr, V o clic derecho para el cuchillo. Si te superan, una fogata te da un respiro.');
+    if (S.night === 0) radio('Clic dispara, 1 y 2 cambian entre la Thompson y la escopeta, R recarga. Shift para correr, V o clic derecho para el cuchillo. Si te superan, una fogata te da un respiro.');
   }
 
   // ======================================================================
@@ -3523,7 +3526,7 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'slot'; b.id = 'slot-' + id;
       b.innerHTML = `<span class="k">${i + 1}</span><span class="st"></span><canvas width="132" height="56"></canvas><span class="nm">${GUNS[id].name}</span><span class="am"></span><span class="rl"></span>`;
-      drawGun(b.querySelector('canvas').getContext('2d'), 58, 28, 0, id, 2.4);
+      drawGun(b.querySelector('canvas').getContext('2d'), id === 'mp5' ? 50 : 58, id === 'mp5' ? 24 : 28, 0, id, id === 'mp5' ? 2.2 : 2.4);
       b.addEventListener('click', () => { if (S && S.state === 'play') selectGun(id); });
       bar.appendChild(b);
     });
@@ -3565,7 +3568,24 @@
     c.save(); c.translate(x, y); c.rotate(a); c.scale(sc, sc);
     if (Math.cos(a) < 0) c.scale(1, -1);
     const dark = '#26262c', mid = '#3a3a42', wood = '#7a4f2a';
-    if (id === 'mp5') { c.strokeStyle = dark; c.lineWidth = 1.5; c.beginPath(); c.moveTo(-2, -2); c.lineTo(-11, -2); c.lineTo(-11, 3); c.stroke(); c.fillStyle = dark; c.fillRect(-3, -3, 20, 4.5); c.fillRect(17, -2, 7, 2.5); c.fillStyle = mid; c.fillRect(1, 1, 3.5, 6); c.fillRect(8, 1, 3, 9); c.fillStyle = '#4a4a52'; c.fillRect(3, -4.5, 9, 1.5); }
+    if (id === 'mp5') {
+      // Thompson M1928: walnut stock, blued receiver, finned barrel, Cutts compensator, drum
+      c.fillStyle = wood; c.beginPath(); c.moveTo(-17, -1.8); c.lineTo(-3, -2.6); c.lineTo(-3, 2); c.lineTo(-16, 4.8); c.closePath(); c.fill();
+      c.fillStyle = 'rgba(255,220,170,.18)'; c.fillRect(-16, -1.6, 12, 0.9); c.fillStyle = 'rgba(0,0,0,.28)'; c.fillRect(-15.5, 3, 12, 1.1);
+      c.fillStyle = dark; c.fillRect(-3, -3.2, 18, 4.8); c.fillStyle = '#4a4a54'; c.fillRect(-3, -3.2, 18, 1);
+      c.fillStyle = '#7a7a84'; c.fillRect(5, -4.8, 3.2, 1.6);
+      c.fillStyle = mid; c.fillRect(15, -2.3, 14, 2.8);
+      c.fillStyle = dark; for (let k = 0; k < 6; k++) c.fillRect(15.6 + k * 2.1, -3.1, 1, 4.4);
+      c.fillStyle = '#2a2a30'; c.fillRect(28.5, -2.8, 4, 3.6); c.fillStyle = '#111'; c.fillRect(29.5, -2.5, 0.8, 0.9); c.fillRect(31, -2.5, 0.8, 0.9);
+      c.fillStyle = wood; c.beginPath(); c.moveTo(0, 1.4); c.lineTo(3.6, 1.4); c.lineTo(2.6, 7.6); c.lineTo(-0.9, 7.1); c.fill();
+      c.beginPath(); c.moveTo(15, 1.4); c.lineTo(18.6, 1.4); c.lineTo(18.2, 7.8); c.lineTo(15.3, 7.8); c.fill();
+      c.fillStyle = 'rgba(0,0,0,.25)'; for (let k = 0; k < 3; k++) c.fillRect(15.4, 3 + k * 1.5, 3, 0.5);
+      c.strokeStyle = dark; c.lineWidth = 0.8; c.beginPath(); c.arc(5, 2.2, 1.7, 0, Math.PI); c.stroke();
+      c.fillStyle = '#26262c'; c.beginPath(); c.arc(9.6, 5.4, 5.4, 0, 7); c.fill();
+      c.strokeStyle = '#4c4c56'; c.lineWidth = 0.8; c.beginPath(); c.arc(9.6, 5.4, 3.8, 0, 7); c.stroke();
+      c.fillStyle = '#62626c'; c.beginPath(); c.arc(9.6, 5.4, 1.2, 0, 7); c.fill();
+      c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.arc(8, 3.8, 1.6, 0, 7); c.fill();
+    }
     else if (id === 'deagle') { c.fillStyle = dark; c.fillRect(-2, 0, 6, 8); c.fillStyle = '#b8b8c2'; c.fillRect(-4, -4, 19, 5.5); c.fillStyle = '#e0e0e8'; c.fillRect(-4, -4, 19, 1.3); c.fillStyle = '#7a7a84'; c.fillRect(6, -2.5, 6, 1); }
     else if (id === 'shotgun') { c.fillStyle = wood; c.beginPath(); c.moveTo(-12, -1); c.lineTo(0, -2); c.lineTo(0, 3); c.lineTo(-12, 5); c.fill(); c.fillStyle = dark; c.fillRect(0, -3, 24, 3); c.fillRect(0, 0.5, 20, 2); c.fillStyle = '#5a3a20'; c.fillRect(9, 0, 8, 4); }
     else if (id === 'ak') { c.fillStyle = wood; c.beginPath(); c.moveTo(-12, -1); c.lineTo(0, -2); c.lineTo(0, 3); c.lineTo(-11, 6); c.fill(); c.fillRect(13, -3, 7, 5); c.fillStyle = dark; c.fillRect(0, -3, 28, 3.5); c.fillRect(20, -4.5, 1.5, 2); c.beginPath(); c.moveTo(6, 1); c.lineTo(11, 1); c.lineTo(13, 10); c.lineTo(8, 10); c.fill(); c.fillRect(1, 1, 3, 5); }
@@ -3590,8 +3610,9 @@
     const arms = () => {
       ctx.lineCap = 'round';
       // far arm on the foregrip, near arm on the grip
-      ctx.strokeStyle = '#2f3a25'; ctx.lineWidth = 3.6; ctx.beginPath(); ctx.moveTo(x - f * 3, y - 4 + bob); ctx.lineTo(gx + ca * 11, gy + sa * 11); ctx.stroke();
-      ctx.fillStyle = '#1c1c1e'; ctx.beginPath(); ctx.arc(gx + ca * 11, gy + sa * 11, 2.1, 0, 7); ctx.fill();
+      const fg = S.cur === 'mp5' ? 16 : 11; // the Thompson's vertical foregrip sits further forward
+      ctx.strokeStyle = '#2f3a25'; ctx.lineWidth = 3.6; ctx.beginPath(); ctx.moveTo(x - f * 3, y - 4 + bob); ctx.lineTo(gx + ca * fg, gy + sa * fg); ctx.stroke();
+      ctx.fillStyle = '#1c1c1e'; ctx.beginPath(); ctx.arc(gx + ca * fg, gy + sa * fg, 2.1, 0, 7); ctx.fill();
       drawGun(ctx, gx, gy, p.aim, S.cur);
       ctx.strokeStyle = '#3d4a30'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x + f * 2, y - 4 + bob); ctx.lineTo(gx + ca * 3, gy + sa * 3); ctx.stroke();
       ctx.fillStyle = '#1c1c1e'; ctx.beginPath(); ctx.arc(gx + ca * 3, gy + sa * 3, 2.3, 0, 7); ctx.fill();
@@ -5091,7 +5112,7 @@
     for (let i = 0; i < 8; i++) { g.fillStyle = '#6a6a70'; g.fillRect(522 + i * 16, 164, 10, 16); g.fillStyle = '#8a3a2a'; g.fillRect(522 + i * 16, 169, 10, 5); }
     for (let i = 0; i < 4; i++) { g.fillStyle = '#2e5a8a'; rr(g, 522 + i * 32, 222, 22, 28, 4); g.fill(); }
     g.fillStyle = '#e8e2d6'; g.fillRect(600, 296, 40, 26); g.fillStyle = '#b3342c'; g.fillRect(616, 300, 8, 18); g.fillRect(611, 305, 18, 8);
-    // crate with the MP5
+    // crate with the Thompson
     g.fillStyle = '#6a4a2a'; g.fillRect(530, 380, 64, 56); g.strokeStyle = '#3e2a16'; g.lineWidth = 2; g.strokeRect(530, 380, 64, 56); g.beginPath(); g.moveTo(530, 380); g.lineTo(594, 436); g.moveTo(594, 380); g.lineTo(530, 436); g.stroke();
     const pose = youPose(pt);
     if (!pose.gun) drawGun(g, 560, 376, 0, 'mp5', 2.2);
@@ -5281,7 +5302,7 @@
     MENU.hero = mk(260, 330);
   }
 
-  // The survivor, big and detailed, looking at the dead with his MP5 at the ready
+  // The survivor, big and detailed, looking at the dead with his Thompson at the ready
   function drawMenuHero(t) {
     const c = MENU.hero, g = c.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 260, 330);
@@ -5316,7 +5337,7 @@
     // gun and hands (low ready, pointing ahead and down)
     const a = 0.42, gs = 3.1, gx = 14, gy = -116 + br, ca = Math.cos(a), sa = Math.sin(a);
     const at = (u, v) => [gx + (u * ca - v * sa) * gs, gy + (u * sa + v * ca) * gs];
-    const [fx, fy] = at(9.5, 5), [hx2, hy2] = at(2.5, 4);
+    const [fx, fy] = at(16.8, 5), [hx2, hy2] = at(2, 4);
     g.strokeStyle = '#303b25'; g.lineWidth = 13; g.beginPath(); g.moveTo(-2, -152 + br); g.lineTo(20, -128 + br); g.lineTo(fx, fy); g.stroke();
     g.fillStyle = '#1c1c1e'; g.beginPath(); g.arc(fx, fy, 6.5, 0, 7); g.fill();
     // torso: jacket, vest, pouches, bandolier, belt
@@ -5356,7 +5377,7 @@
     g.fillStyle = '#1a1a1c'; rr(g, -14, H - 19, 36, 4, 1); g.fill();
     for (const x of [3, 13]) { g.fillStyle = '#111'; rr(g, x - 1, H - 25, 11, 10, 3); g.fill(); g.fillStyle = '#5fa3b5'; rr(g, x, H - 24, 9, 8, 2); g.fill(); g.fillStyle = 'rgba(255,255,255,.8)'; g.fillRect(x + 1.5, H - 22.5, 2, 2); }
     g.fillStyle = '#222'; rr(g, 22, H - 15, 7, 7, 1); g.fill(); g.fillStyle = '#fff4c8'; g.fillRect(28, H - 14, 2, 5);
-    // MP5 and the near arm on the grip
+    // Thompson and the near arm on the grip
     drawGun(g, gx, gy, a, 'mp5', gs);
     g.strokeStyle = '#3d4a30'; g.lineWidth = 14; g.beginPath(); g.moveTo(8, -150 + br); g.lineTo(-6, -124 + br); g.lineTo(hx2, hy2); g.stroke();
     g.strokeStyle = '#2e3824'; g.lineWidth = 4; g.beginPath(); g.moveTo(hx2 - 8, hy2 - 3); g.lineTo(hx2 - 4, hy2 + 3); g.stroke();
