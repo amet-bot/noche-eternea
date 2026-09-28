@@ -851,6 +851,28 @@
       tone({ t0: t, f: midi(n), dur: MSTEP * len, type: 'triangle', gain: 0.014, attack: 0.05, dest: M, rev: 0.5 });
     }
   }
+  // Checkpoint theme: slow A minor, a music box over a cold pad and a low drone
+  const CSTEP = 60 / 66 / 2, CPROG = [[45, [57, 60, 64]], [41, [57, 60, 65]], [38, [57, 62, 65]], [40, [56, 59, 64]]];
+  const CBOX = [76, 0, 72, 0, 69, 0, 71, 72, 74, 0, 72, 0, 69, 0, 0, 0, 77, 0, 76, 0, 74, 0, 72, 71, 68, 0, 71, 0, 76, 0, 0, 0];
+  function cpStep(step, t) {
+    const M = AU.cp, s = step % 8, bar = Math.floor(step / 8) % 4, [root, ch] = CPROG[bar];
+    if (s === 0) {
+      for (const n of ch) tone({ t0: t, f: midi(n - 12), dur: CSTEP * 8 + 0.8, type: 'triangle', gain: 0.018, attack: 1.2, lp: 900, dest: M, rev: 0.7 });
+      tone({ t0: t, f: midi(root - 12), dur: CSTEP * 8 + 0.4, type: 'sine', gain: 0.1, attack: 0.6, dest: M });
+      if (bar === 0) noise({ t0: t, dur: 3.5, f: 300, to: 900, type: 'bandpass', q: 0.7, gain: 0.03, attack: 1.5, dest: M, rev: 0.5 });
+    }
+    const n = CBOX[step % 32];
+    if (n) { tone({ t0: t, f: midi(n), dur: 1.2, gain: 0.05, attack: 0.003, dest: M, rev: 0.8 }); tone({ t0: t, f: midi(n + 12), dur: 0.5, type: 'triangle', gain: 0.012, dest: M, rev: 0.8 }); }
+  }
+  function cpAudio() {
+    if (!AU.C) return;
+    if (!AU.cp) { AU.cp = AU.C.createGain(); AU.cp.gain.value = 0; AU.cp.connect(AU.master); }
+    const want = S.state === 'play' && S.seq.phase === 'cp' && AU.musicOn;
+    if (want !== !!AU.cpOn) { AU.cpOn = want; const g = AU.cp.gain; g.cancelScheduledValues(now()); g.setTargetAtTime(want ? 0.7 : 0, now(), want ? 0.5 : 0.4); if (want) { AU.cStep = 0; AU.cNext = now() + 0.2; } }
+    if (!want) return;
+    if (AU.cNext < now()) AU.cNext = now() + 0.08;
+    while (AU.cNext < now() + 0.25) { cpStep(AU.cStep, AU.cNext); AU.cNext += CSTEP; AU.cStep++; }
+  }
   function menuAudio() {
     const off = !AU.C || AU.C.state !== 'running';
     if (S.state === 'menu' && off !== AU.hint) { AU.hint = off; $('sndHint').hidden = !off; }
@@ -1047,7 +1069,7 @@
   ];
   const CLUE_POS = CLUES.map((c, i) => {
     const f = (i + 1) / (CLUES.length + 1), L = Math.hypot(HOSPITAL.x, HOSPITAL.y);
-    const nx = -HOSPITAL.y / L, ny = HOSPITAL.x / L, off = (i % 2 ? 1 : -1) * (260 + hash(i, 42) * 320);
+    const nx = -HOSPITAL.y / L, ny = HOSPITAL.x / L, off = (i % 2 ? 1 : -1) * (1500 + hash(i, 42) * 900);
     return { x: HOSPITAL.x * f + nx * off, y: HOSPITAL.y * f + ny * off };
   });
 
@@ -1869,6 +1891,7 @@
       guards: TOWERS.map(tw => ({ cd: rand(0.5, 1.2), aim: tw.base, target: null })),
       kickX: 0, kickY: 0, hitstop: 0, hitstopCd: 0, whiteFlash: 0, groanT: 3, crackT: 0, shake: 0,
     };
+    CHECK_CAMPS.forEach((c, i) => { c.burnt = i >= RUN.night; });
     buildHotbar(); updateHud();
   }
 
@@ -1935,6 +1958,7 @@
     }
   }
   function killEnemy(e) {
+    if (S.obj === 'clear' && !e.dead) S.clearKills++;
     if (e.type === 'bloater' && !e.popped) { e.popped = true; e.dead = true; acidBurst(e.x, e.y); }
     e.dead = true; S.kills++; RUN.kills++; META.kills++;
     if (e.type === 'boss') META.boss++;
@@ -2227,14 +2251,13 @@
     note(`Pista ${i + 1} de ${CLUES.length} · ${c.name}`, c.text);
     S.fx.push({ type: 'ring', x: c.x, y: c.y, life: 0.8, max: 0.8, teal: true });
     radio(c.say[1], c.say[0]);
-    if (RUN.clueIdx >= CLUES.length) { S.obj = 'hospital'; S.hospitalShown = true; banner('Hospital San Rafael'); startCheckScene(i); }
-    else {
-      S.obj = 'return'; RUN.needReturn = true; banner('¡Llega a la fogata! Te han olido');
-      radio('Buen trabajo. Hay un campamento con fuego a unos pasos: es tu refugio esta noche. Llega antes de que te alcancen.');
-      // the dead pick up your trail: a pack hunts you from the edges
-      for (let k = 0, n = 3 + Math.round(S.night * 1.5); k < n; k++) { const e = spawnEnemy(pickType(true)); e.state = 'chase'; }
-      S.cutT = 7;
-    }
+    // the dead pick up your trail: clear them out before you can rest
+    RUN.needReturn = true;
+    S.obj = 'clear'; S.clearKills = 0; S.clearNeed = Math.round((10 + S.night * 3) * (TOUCH ? 0.8 : 1)); S.clearT = 0;
+    banner(`¡Despeja la zona! Elimina ${S.clearNeed} zombis`);
+    radio(RUN.clueIdx >= CLUES.length ? 'Tienes el mapa… pero te han rodeado. ¡Límpiate el camino!' : 'Hay un campamento a unos pasos, pero la fogata está apagada y te han rodeado. Límpialo y enciéndela.');
+    for (let k = 0, n = 3 + Math.round(S.night * 1.5); k < n; k++) { const e = spawnEnemy(pickType(true)); e.state = 'chase'; }
+    S.cutT = 7;
   }
 
   // ---------- Hordes ----------
@@ -2427,6 +2450,20 @@
       S.cutT = rand(10, 14) - S.night * 0.8;
       const a = Math.atan2(cutGoal.y - p.y, cutGoal.x - p.x);
       for (let i = 0, n = 2 + Math.floor(S.night / 2); i < n; i++) { const e = spawnEnemy(pickType(true), undefined, undefined, undefined, a + rand(-0.5, 0.5)); e.state = 'chase'; }
+    }
+    // clearing the area: they keep coming until you have killed enough
+    if (live && S.obj === 'clear') {
+      if ((S.clearT -= dt) <= 0) {
+        S.clearT = 1.1;
+        const left = S.clearNeed - S.clearKills, hunting = S.enemies.filter(e => !e.dead && e.state === 'chase').length;
+        if (hunting < Math.min(left, 8)) for (let k = 0; k < 2; k++) { const e = spawnEnemy(pickType(true)); e.state = 'chase'; }
+      }
+      if (S.clearKills >= S.clearNeed) {
+        SFX.stageClear(); S.whiteFlash = Math.max(S.whiteFlash, 0.15);
+        if (S.clueIdx >= CLUES.length) { S.obj = 'hospital'; S.hospitalShown = true; return startCheckScene(S.clueIdx - 1); }
+        S.obj = 'return'; CHECK_CAMPS[S.clueIdx - 1].burnt = false;
+        banner('¡Zona despejada! Ve a la fogata'); radio('Despejado. La fogata del campamento está lista: ve y descansa.');
+      }
     }
     // an ambush waits at every mark
     if (live && S.obj === 'clue' && !S.ambushed) {
@@ -2994,7 +3031,7 @@
     S.enemies = []; S.eshots = []; S.pools = []; S.dash = null; S.flames = []; S.burn = 0; input.fire = false;
     S.seq = { phase: 'cp', t: 0, cp: i, line: 0, lt: 0 };
     clearRadio(); $('note').hidden = true; noteLife = 0; $('toast').hidden = true; toastLife = 0; bannerLife = 0;
-    document.body.classList.add('intro'); setMusicGain(AU.musicOn ? 0.12 : 0, 0.8);
+    document.body.classList.add('intro'); setMusicGain(0, 0.8);
     SFX.clue(); SFX.crackle(1);
   }
   function checkSceneTick(Q, dt) {
@@ -3016,57 +3053,129 @@
       radio('Sigue la ruta del mapa hasta el hospital. Te lo marco en la brújula.');
     }
   }
-  // the scene: night, the checkpoint fire, you with what you found, the camp behind
+  // the scene: night, the checkpoint fire, you with what you found, the camp behind, the dead at the edge of the light
   function drawCheckScene(Q) {
     if (!MENU.bg) buildMenuArt();
     const g = ctx, t = S.t, s2 = Math.max(W / 960, H / 540), ox = (W - 960 * s2) / 2, oy = (H - 540 * s2) / 2;
+    const L = CP_TALK[Q.cp][Q.line], talkK = L ? Math.min(1, Q.lt / 0.5) : 0;
     g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
-    g.save(); g.translate(ox + 480 * s2, oy + 290 * s2); g.scale(s2 * (1.02 + Q.t * 0.01), s2 * (1.02 + Q.t * 0.01)); g.translate(-480 + Math.sin(t * 0.3) * 8, -290);
-    const sky = g.createLinearGradient(0, 0, 0, 400); sky.addColorStop(0, '#04050a'); sky.addColorStop(1, '#141220'); g.fillStyle = sky; g.fillRect(-100, -60, 1160, 520);
-    for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(220,225,255,${0.3 + 0.5 * hash(i, 7) * (0.6 + 0.4 * Math.sin(t * 2 + i))})`; g.fillRect(hash(i, 1) * 1000 - 20, hash(i, 2) * 260, 1.5, 1.5); }
-    g.fillStyle = '#06080a'; for (let i = -2; i < 18; i++) { const x = i * 62 + (i % 3) * 11, h = 90 + (Math.abs(i) * 29 % 70); g.beginPath(); g.moveTo(x - 30, 400); g.lineTo(x, 400 - h); g.lineTo(x + 30, 400); g.fill(); }
-    if (Q.cp === CLUES.length - 1) { g.fillStyle = '#07080d'; g.fillRect(620, 250, 150, 150); g.fillRect(660, 222, 70, 30); g.fillStyle = 'rgba(194,65,59,.9)'; g.fillRect(688, 230, 14, 4); g.fillRect(693, 225, 4, 14); g.fillStyle = Math.sin(t * 1.3) > -0.7 ? 'rgba(240,195,110,.95)' : 'rgba(80,60,40,.6)'; g.fillRect(730, 290, 8, 10); }
-    const gr = g.createLinearGradient(0, 400, 0, 540); gr.addColorStop(0, '#15110c'); gr.addColorStop(1, '#060504'); g.fillStyle = gr; g.fillRect(-100, 398, 1160, 180);
-    const FX = 520, FY = 440, fl = 0.85 + 0.15 * Math.sin(t * 9) * Math.sin(t * 5.3);
-    g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_WARM, FX, FY - 30, 340 * fl, 1); g.restore();
-    // tent and supplies of the camp
-    g.fillStyle = '#2a2014'; g.beginPath(); g.moveTo(230, 440); g.lineTo(320, 330); g.lineTo(410, 440); g.fill();
-    g.fillStyle = `rgba(150,90,40,${0.55 * fl})`; g.beginPath(); g.moveTo(320, 330); g.lineTo(410, 440); g.lineTo(340, 440); g.fill();
-    g.fillStyle = '#0a0806'; g.beginPath(); g.moveTo(300, 440); g.lineTo(322, 380); g.lineTo(344, 440); g.fill();
-    g.fillStyle = '#3a2a18'; rr(g, 700, 410, 64, 36, 3); g.fill(); g.fillStyle = '#4a3a22'; g.fillRect(700, 410, 64, 6); rr(g, 740, 380, 44, 32, 3); g.fill();
-    g.fillStyle = `rgba(255,150,70,${0.25 * fl})`; g.fillRect(700, 412, 30, 34);
-    // the fire
-    g.fillStyle = '#2a2622'; for (let i = 0; i < 8; i++) { g.beginPath(); g.ellipse(FX - 40 + i * 11.5, FY + 6, 7, 4.5, 0, 0, 7); g.fill(); }
+    // camera: a slow drift and a push in on the object while you speak about it
+    const push = L && L[0] === 'you' ? 0.05 * talkK : 0, zoom = 1.03 + Q.t * 0.008 + push;
+    g.save(); g.translate(ox + 480 * s2, oy + 300 * s2); g.scale(s2 * zoom, s2 * zoom); g.translate(-480 + Math.sin(t * 0.25) * 14 + push * 600, -300 + Math.cos(t * 0.2) * 4);
+    const sky = g.createLinearGradient(0, 0, 0, 400); sky.addColorStop(0, '#03040a'); sky.addColorStop(0.7, '#0f0e1c'); sky.addColorStop(1, '#1c1522'); g.fillStyle = sky; g.fillRect(-160, -80, 1280, 560);
+    for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(220,225,255,${0.25 + 0.55 * hash(i, 7) * (0.6 + 0.4 * Math.sin(t * 2 + i))})`; g.fillRect(hash(i, 1) * 1180 - 110, hash(i, 2) * 280 - 40, hash(i, 9) < 0.1 ? 2 : 1.2, hash(i, 9) < 0.1 ? 2 : 1.2); }
+    g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_BULB, 800, 70, 120, 0.6); g.restore();
+    g.fillStyle = '#e4e8f2'; g.beginPath(); g.arc(800, 70, 22, 0, 7); g.fill(); g.fillStyle = 'rgba(40,44,70,.3)'; g.beginPath(); g.arc(808, 74, 20, 0, 7); g.fill();
+    // drifting clouds across the moon
+    for (let i = 0; i < 6; i++) { const cx = mod(i * 260 + t * 9, 1500) - 250, cy = 60 + (i % 3) * 38; g.fillStyle = 'rgba(10,11,20,.7)'; g.beginPath(); g.ellipse(cx, cy, 110, 18, 0, 0, 7); g.ellipse(cx + 60, cy - 8, 70, 14, 0, 0, 7); g.fill(); }
+    // far ridge, then pines swaying in the wind
+    g.fillStyle = '#0a0b14'; g.beginPath(); g.moveTo(-160, 400); for (let x = -160; x <= 1120; x += 20) g.lineTo(x, 300 - vnoise(x * 0.006, 3) * 70); g.lineTo(1120, 400); g.fill();
+    if (Q.cp === CLUES.length - 1) { g.fillStyle = '#07080d'; g.fillRect(620, 250, 150, 150); g.fillRect(660, 222, 70, 30); g.fillStyle = 'rgba(194,65,59,.9)'; g.fillRect(688, 230, 14, 4); g.fillRect(693, 225, 4, 14); for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) if (hash(r, c) < 0.25) { g.fillStyle = 'rgba(232,190,110,.6)'; g.fillRect(630 + c * 22, 262 + r * 30, 7, 10); } g.fillStyle = Math.sin(t * 1.3) > -0.7 ? 'rgba(240,195,110,.95)' : 'rgba(80,60,40,.6)'; g.fillRect(730, 292, 8, 10); }
+    for (let i = -3; i < 20; i++) { const x = i * 58 + (i % 3) * 13, h = 100 + (Math.abs(i) * 29 % 80), sw = Math.sin(t * 0.8 + i) * 3; g.fillStyle = i % 2 ? '#05070a' : '#070a0c'; g.beginPath(); g.moveTo(x - 32, 402); g.lineTo(x + sw, 402 - h); g.lineTo(x + 32, 402); g.fill(); }
+    const gr = g.createLinearGradient(0, 400, 0, 560); gr.addColorStop(0, '#17120d'); gr.addColorStop(1, '#060504'); g.fillStyle = gr; g.fillRect(-160, 398, 1280, 200);
+    const FX = 520, FY = 444, fl = 0.85 + 0.15 * Math.sin(t * 9) * Math.sin(t * 5.3);
+    // the dead, held back at the edge of the firelight
+    for (let k = 0; k < 5; k++) {
+      const side = k % 2 ? 1 : -1, zx = FX + side * (330 + k * 55) + Math.sin(t * 0.7 + k * 2) * 14, zy = 410 + k * 6, bb = Math.abs(Math.sin(t * 1.4 + k)) * 2;
+      g.fillStyle = '#030304'; g.beginPath(); g.ellipse(zx, zy - 30 + bb, 9, 18, 0.15 * side, 0, 7); g.fill(); g.beginPath(); g.arc(zx - side * 3, zy - 54 + bb, 7, 0, 7); g.fill();
+      g.strokeStyle = '#030304'; g.lineWidth = 4; g.lineCap = 'round'; g.beginPath(); g.moveTo(zx - side * 4, zy - 42 + bb); g.lineTo(zx - side * 26, zy - 44 + Math.sin(t * 2 + k) * 4); g.moveTo(zx - 3, zy - 14); g.lineTo(zx - 5 + Math.sin(t * 1.4 + k) * 4, zy); g.moveTo(zx + 3, zy - 14); g.lineTo(zx + 5 - Math.sin(t * 1.4 + k) * 4, zy); g.stroke();
+      g.fillStyle = 'rgba(255,50,40,.9)'; g.fillRect(zx - side * 6 - 1, zy - 56 + bb, 2, 2); g.fillRect(zx - side * 6 + 3, zy - 56 + bb, 2, 2);
+    }
+    g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_WARM, FX, FY - 30, 360 * fl, 1); g.restore();
+    // tent with a lantern swinging, supplies
+    const flap = Math.sin(t * 1.6) * 6;
+    g.fillStyle = '#2c2216'; g.beginPath(); g.moveTo(220, 444); g.lineTo(320, 322); g.lineTo(420, 444); g.fill();
+    g.fillStyle = `rgba(160,100,45,${0.55 * fl})`; g.beginPath(); g.moveTo(320, 322); g.lineTo(420, 444); g.lineTo(340, 444); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1; for (let k = 1; k < 5; k++) { g.beginPath(); g.moveTo(320, 322); g.lineTo(220 + k * 40, 444); g.stroke(); }
+    g.fillStyle = '#0a0806'; g.beginPath(); g.moveTo(298, 444); g.lineTo(322, 378); g.lineTo(346 + flap, 444); g.fill();
+    g.strokeStyle = '#2a2016'; g.beginPath(); g.moveTo(320, 322); g.lineTo(340, 302); g.stroke();
+    const la = Math.sin(t * 1.9) * 0.25, lx0 = 372, ly0 = 360;
+    g.strokeStyle = '#222'; g.beginPath(); g.moveTo(lx0, ly0); g.lineTo(lx0 + Math.sin(la) * 18, ly0 + Math.cos(la) * 18); g.stroke();
+    g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_BULB, lx0 + Math.sin(la) * 22, ly0 + Math.cos(la) * 22, 34, 0.9); g.restore();
+    g.fillStyle = '#3a3a30'; g.fillRect(lx0 + Math.sin(la) * 22 - 4, ly0 + Math.cos(la) * 22 - 5, 8, 10); g.fillStyle = '#ffd28a'; g.fillRect(lx0 + Math.sin(la) * 22 - 2, ly0 + Math.cos(la) * 22 - 3, 4, 6);
+    g.fillStyle = '#3a2a18'; rr(g, 700, 414, 64, 36, 3); g.fill(); g.fillStyle = '#4a3a22'; g.fillRect(700, 414, 64, 6); rr(g, 742, 384, 44, 32, 3); g.fill(); g.strokeStyle = 'rgba(0,0,0,.35)'; g.strokeRect(704, 424, 56, 22);
+    g.fillStyle = `rgba(255,150,70,${0.25 * fl})`; g.fillRect(700, 416, 30, 34);
+    g.fillStyle = '#2e1f12'; rr(g, 560, 458, 70, 12, 5); g.fill(); g.fillStyle = `rgba(255,140,60,${0.25 * fl})`; g.fillRect(564, 458, 62, 3);
+    // the fire: stones, logs, flames, embers, smoke
+    for (let j = 0; j < 9; j++) { const p = (t * 0.1 + j / 9) % 1; g.fillStyle = `rgba(70,64,64,${0.12 * (1 - p)})`; g.beginPath(); g.arc(FX + p * 70 + Math.sin(t + j) * 10, FY - 50 - p * 260, 12 + p * 34, 0, 7); g.fill(); }
+    g.fillStyle = '#2a2622'; for (let i = 0; i < 8; i++) { g.beginPath(); g.ellipse(FX - 40 + i * 11.5, FY + 6, 7, 4.5, 0, 0, 7); g.fill(); g.fillStyle = `rgba(255,140,60,${0.2 * fl})`; g.fillRect(FX - 44 + i * 11.5, FY + 2, 7, 2); g.fillStyle = '#2a2622'; }
     g.fillStyle = '#3a2616'; g.save(); g.translate(FX, FY); g.rotate(0.3); g.fillRect(-28, -4, 56, 8); g.rotate(-0.6); g.fillRect(-28, -4, 56, 8); g.restore();
-    g.save(); g.translate(FX, FY); g.scale(2.3, 2.3); drawFlamesOn(g, 0, 0, t, 3.3); g.restore();
-    for (let j = 0; j < 20; j++) { const p = (t * 0.33 + j * 0.091) % 1; g.fillStyle = `rgba(255,${150 + (j % 3) * 30},70,${1 - p})`; g.fillRect(FX + Math.sin(j * 7 + t * 2) * 26 * p, FY - 20 - p * 240, 2, 2); }
-    // you, standing by the fire holding what you found
-    const [lx, ly] = drawMenuHero(t);
+    g.fillStyle = `rgba(255,110,40,${0.8 * fl})`; g.beginPath(); g.ellipse(FX, FY, 20, 4, 0, 0, 7); g.fill();
+    g.save(); g.translate(FX, FY); g.scale(2.4, 2.4); drawFlamesOn(g, 0, 0, t, 3.3); g.restore();
+    for (let j = 0; j < 28; j++) { const p = (t * 0.33 + j * 0.071) % 1; g.fillStyle = `rgba(255,${150 + (j % 3) * 30},70,${1 - p})`; g.fillRect(FX + Math.sin(j * 7 + t * 2) * 30 * p + p * 20, FY - 20 - p * 260, 2, 2); }
+    // you, with what you found floating in the firelight, sparkling
+    drawMenuHero(t);
     g.save(); g.translate(FX - 150, FY + 8); g.scale(-0.85, 0.85); g.drawImage(MENU.hero, -130, -318); g.restore();
-    const ix = FX - 95, iy = FY - 120 + Math.sin(t * 2) * 3;
-    g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_ACID, ix, iy, 34, 0.3); stamp(g, ST_WARM, ix, iy, 30, 0.6); g.restore();
-    drawClueItem(g, Q.cp, ix, iy, t);
+    const ix = FX - 92, iy = FY - 124 + Math.sin(t * 2) * 4;
+    g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_WARM, ix, iy, 40 + Math.sin(t * 3) * 4, 0.7);
+    for (let k = 0; k < 8; k++) { const a = t * 1.4 + k * 0.785, r = 26 + Math.sin(t * 2 + k) * 4; g.fillStyle = `rgba(255,240,200,${0.5 + 0.5 * Math.sin(t * 5 + k)})`; g.fillRect(ix + Math.cos(a) * r, iy + Math.sin(a) * r * 0.6, 2, 2); }
     g.restore();
-    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.62); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.65)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);
-    // letterbox, the mark's name, the dialogue
+    g.save(); g.translate(ix, iy); g.rotate(Math.sin(t * 1.3) * 0.12); drawClueItem(g, Q.cp, 0, 0, t); g.restore();
+    // grass in the foreground, bending in the wind
+    g.strokeStyle = '#070605'; g.lineWidth = 2; g.lineCap = 'round'; g.beginPath();
+    for (let i = 0; i < 80; i++) { const x = i * 14 - 120 + hash(i, 11) * 8, h = 10 + hash(i, 12) * 18, sw = Math.sin(t * 1.5 + x * 0.02) * 5; g.moveTo(x, 482); g.quadraticCurveTo(x + sw * 0.5, 482 - h * 0.5, x + sw + 3, 482 - h); }
+    g.stroke();
+    g.restore();
+    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.28, W / 2, H / 2, Math.hypot(W, H) * 0.62); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.7)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+    if (!TOUCH && POST.grain) { g.save(); g.globalAlpha = 0.05; g.translate(-Math.random() * 256, -Math.random() * 256); g.fillStyle = POST.grain; g.fillRect(0, 0, W + 256, H + 256); g.restore(); }
+    // letterbox, the mark's name burning in, the dialogue with a portrait
     const bh = Math.min(70, H * 0.09), base = Math.min(W, H); g.fillStyle = '#000'; g.fillRect(0, 0, W, bh); g.fillRect(0, H - bh, W, bh);
-    const a0 = Math.min(1, Q.t / 0.6);
-    g.globalAlpha = a0; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.globalAlpha = Math.min(1, Q.t / 0.6);
     g.font = `700 ${Math.max(10, base * 0.022)}px "IBM Plex Mono", monospace`; g.fillStyle = '#7fd1c8';
     g.fillText(Q.cp < CLUES.length - 1 ? `C H E C K P O I N T   ${Q.cp + 1}   ·   P I S T A   ${Q.cp + 1}   D E   ${CLUES.length}` : `P I S T A   ${CLUES.length}   D E   ${CLUES.length}`, W / 2, bh + base * 0.05);
-    g.font = `400 ${Math.round(base * 0.075)}px "Pirata One", Georgia, serif`; g.fillStyle = '#e9b949'; g.fillText(CLUES[Q.cp].name, W / 2, bh + base * 0.13);
+    const NAME = CLUES[Q.cp].name, shown = Math.min(NAME.length, Math.floor(Q.t * 18));
+    g.font = `400 ${Math.round(base * 0.075)}px "Pirata One", Georgia, serif`; g.fillStyle = '#e9b949'; g.fillText(NAME.slice(0, shown), W / 2, bh + base * 0.13);
     g.globalAlpha = 1;
-    const L = CP_TALK[Q.cp][Q.line];
     if (L) {
-      const [who, col] = CP_WHO[L[0]], n = Math.min(L[1].length, Math.floor(Q.lt * 38)), w = Math.min(W - 32, 720), h = 80, x = (W - w) / 2, y = H - bh - h - 14;
-      g.fillStyle = 'rgba(12,10,16,.92)'; rr(g, x, y, w, h, 4); g.fill(); g.strokeStyle = col + '66'; g.lineWidth = 1; g.stroke();
-      g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = col; g.font = '700 11px "IBM Plex Mono", monospace'; g.fillText(who, x + 14, y + 10);
+      const [who, col] = CP_WHO[L[0]], n = Math.min(L[1].length, Math.floor(Q.lt * 38)), w = Math.min(W - 32, 760), h = 92, x = (W - w) / 2, y = H - bh - h - 12;
+      g.globalAlpha = talkK;
+      g.fillStyle = 'rgba(12,10,16,.93)'; rr(g, x, y + (1 - talkK) * 10, w, h, 5); g.fill(); g.strokeStyle = col + '77'; g.lineWidth = 1; g.stroke();
+      drawPortrait(g, L[0], x + 12, y + 12 + (1 - talkK) * 10, 68, t, Q.lt < L[1].length / 38);
+      const tx = x + 94;
+      g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = col; g.font = '700 11px "IBM Plex Mono", monospace'; g.fillText(who, tx, y + 12);
       g.fillStyle = '#efe6d4'; g.font = '400 14px "IBM Plex Mono", monospace';
-      const words = L[1].slice(0, n).split(' '); let line = '', ly = y + 30;
-      for (const wd of words) { const tryL = line ? line + ' ' + wd : wd; if (g.measureText(tryL).width > w - 28) { g.fillText(line, x + 14, ly); line = wd; ly += 19; } else line = tryL; }
-      g.fillText(line, x + 14, ly);
+      const words = L[1].slice(0, n).split(' '); let line = '', ly = y + 32;
+      for (const wd of words) { const tryL = line ? line + ' ' + wd : wd; if (g.measureText(tryL).width > w - 110) { g.fillText(line, tx, ly); line = wd; ly += 19; } else line = tryL; }
+      g.fillText(line, tx, ly);
       g.textAlign = 'right'; g.fillStyle = 'rgba(239,230,212,.45)'; g.font = '400 10px "IBM Plex Mono", monospace'; g.fillText(`${Q.line + 1}/${CP_TALK[Q.cp].length} · ${TOUCH ? 'toca' : 'clic o Espacio'} para seguir`, x + w - 12, y + h - 18);
+      g.globalAlpha = 1;
     }
+  }
+  // speaker portraits: you in your helmet, Marco on the radio, Lucía through the static
+  function drawPortrait(g, who, x, y, S0, t, talking) {
+    g.save(); g.beginPath(); rr(g, x, y, S0, S0, 6); g.clip();
+    const bg = g.createLinearGradient(0, y, 0, y + S0); bg.addColorStop(0, who === 'lucia' ? '#2a1418' : who === 'marco' ? '#18221a' : '#221c12'); bg.addColorStop(1, '#08070a'); g.fillStyle = bg; g.fillRect(x, y, S0, S0);
+    const cx = x + S0 / 2, cy = y + S0 * 0.58, mouth = talking ? Math.abs(Math.sin(t * 16)) * 3 : 0;
+    if (who === 'you') {
+      g.fillStyle = '#3d4a30'; g.fillRect(cx - 22, cy + 16, 44, 20); g.fillStyle = '#9e2b25'; g.fillRect(cx - 16, cy + 12, 32, 7);
+      g.fillStyle = '#e0c4a2'; g.beginPath(); g.arc(cx, cy, 16, 0, 7); g.fill(); g.fillStyle = 'rgba(60,40,30,.4)'; g.beginPath(); g.arc(cx, cy + 6, 11, 0, Math.PI); g.fill();
+      g.fillStyle = '#3a4528'; g.beginPath(); g.arc(cx, cy - 5, 18, Math.PI, 0); g.fill(); g.fillRect(cx - 19, cy - 6, 38, 4);
+      g.fillStyle = '#5fa3b5'; g.fillRect(cx - 12, cy - 16, 9, 6); g.fillRect(cx + 3, cy - 16, 9, 6); g.fillStyle = '#1a1a1c'; g.fillRect(cx - 16, cy - 12, 32, 2);
+      g.fillStyle = '#1a1210'; g.fillRect(cx - 8, cy - 1, 3, 3); g.fillRect(cx + 5, cy - 1, 3, 3); g.fillStyle = '#6a4030'; g.fillRect(cx - 4, cy + 8, 8, 1.5 + mouth);
+    } else if (who === 'marco') {
+      g.fillStyle = '#4a4a3a'; g.fillRect(cx - 24, cy + 14, 48, 22);
+      g.fillStyle = '#c8a888'; g.beginPath(); g.arc(cx, cy, 16, 0, 7); g.fill();
+      g.fillStyle = '#6a6a6a'; g.beginPath(); g.arc(cx, cy + 6, 15, 0.1, Math.PI - 0.1); g.fill(); g.fillStyle = '#c8a888'; g.fillRect(cx - 5, cy + 7, 10, 2 + mouth);
+      g.fillStyle = '#3a3a3a'; g.beginPath(); g.arc(cx, cy - 6, 16, Math.PI, 0); g.fill();
+      g.strokeStyle = '#111'; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy - 2, 18, Math.PI * 1.05, Math.PI * 1.95); g.stroke(); g.fillStyle = '#111'; g.fillRect(cx - 21, cy - 6, 6, 10); g.fillRect(cx + 15, cy - 6, 6, 10);
+      g.strokeStyle = '#111'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(cx + 18, cy + 2); g.quadraticCurveTo(cx + 14, cy + 12, cx + 5, cy + 10); g.stroke();
+      g.fillStyle = '#1a1210'; g.fillRect(cx - 7, cy - 3, 3, 2.5); g.fillRect(cx + 4, cy - 3, 3, 2.5);
+    } else {
+      g.fillStyle = '#d8d8e0'; g.fillRect(cx - 22, cy + 14, 44, 22);
+      g.fillStyle = '#3a2418'; g.beginPath(); g.ellipse(cx, cy + 2, 21, 24, 0, 0, 7); g.fill();
+      g.fillStyle = '#e0c0a8'; g.beginPath(); g.ellipse(cx, cy, 13, 16, 0, 0, 7); g.fill();
+      g.fillStyle = '#3a2418'; g.beginPath(); g.ellipse(cx - 4, cy - 12, 14, 6, -0.4, 0, 7); g.fill();
+      g.fillStyle = 'rgba(150,40,40,.7)'; g.fillRect(cx + 6, cy + 2, 4, 2);
+      g.fillStyle = '#1a1210'; g.fillRect(cx - 6, cy - 2, 3, 2.5); g.fillRect(cx + 3, cy - 2, 3, 2.5); g.fillStyle = '#8a4a40'; g.fillRect(cx - 3, cy + 7, 6, 1.5 + mouth);
+      // broken signal
+      for (let k = 0; k < 6; k++) { g.fillStyle = `rgba(200,200,220,${0.12 + Math.random() * 0.15})`; g.fillRect(x, y + Math.random() * S0, S0, 1 + Math.random() * 2); }
+      if (Math.random() < 0.15) { g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(x, y + Math.random() * S0, S0, 6); }
+    }
+    // the radio waveform when someone speaks through it
+    if (who !== 'you' && talking) { g.fillStyle = who === 'lucia' ? 'rgba(229,138,138,.8)' : 'rgba(181,216,106,.8)'; for (let k = 0; k < 9; k++) { const hh = 2 + Math.abs(Math.sin(t * 18 + k * 1.7)) * 9; g.fillRect(x + 6 + k * 6, y + S0 - 6 - hh, 3, hh); } }
+    g.restore();
+    g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 1; rr(g, x, y, S0, S0, 6); g.stroke();
   }
   // what Lucía left behind, drawn in the hand of the hero
   function drawClueItem(g, i, x, y, t) {
@@ -3292,7 +3401,7 @@
   $('mapClose').addEventListener('click', () => closeMap());
   function mapGoal() {
     if (S.obj === 'clue') return { x: CLUE_POS[S.clueIdx].x, y: CLUE_POS[S.clueIdx].y, name: `Marca de Lucía ${S.clueIdx + 1}`, zone: true };
-    if (S.obj === 'return') { const c = CHECK_CAMPS[S.clueIdx - 1]; return { x: c.x, y: c.y, name: 'Campamento' }; }
+    if ((S.obj === 'return' || S.obj === 'clear') && S.clueIdx - 1 < CHECK_CAMPS.length) { const c = CHECK_CAMPS[S.clueIdx - 1]; return { x: c.x, y: c.y, name: 'Campamento' }; }
     return { x: HOSPITAL.x, y: HOSPITAL.y, name: 'Hospital San Rafael' };
   }
   function openMap(brief) {
@@ -3432,7 +3541,7 @@
     $('timer').classList.toggle('low', S.threat > 80 || S.horde);
     $('kills').textContent = RUN.scrap;
     const obj = S.obj === 'clue' ? `Encuentra la <em>pista ${S.clueIdx + 1}</em> · flecha turquesa`
-      : S.obj === 'return' ? 'Llega a la <em>fogata del campamento</em>' : 'Llega al <em>hospital San Rafael</em>';
+      : S.obj === 'return' ? 'Llega a la <em>fogata del campamento</em>' : S.obj === 'clear' ? `Despeja la zona: <em>${S.clearKills}/${S.clearNeed}</em> zombis` : 'Llega al <em>hospital San Rafael</em>';
     if ($('next').innerHTML !== obj) $('next').innerHTML = obj;
     const N = NIGHTS[S.night];
     const side = N.side && !RUN.questDone.has(S.night) ? `${N.side.who}: <em>${S.questGot}/${N.side.need}</em> ${N.side.label}` : '';
@@ -4124,7 +4233,7 @@
     const goals = [];
     if (S.obj === 'clue') goals.push({ x: CLUE_POS[S.clueIdx].x, y: CLUE_POS[S.clueIdx].y, col: '#7fd1c8', txt: `Marca de Lucía ${S.clueIdx + 1}`, zone: true });
     if (S.obj === 'hospital') goals.push({ x: HOSPITAL.x, y: HOSPITAL.y + 60, col: '#ff6a5a', txt: 'Hospital San Rafael' });
-    if (S.obj === 'return') { const c = CHECK_CAMPS[S.clueIdx - 1]; goals.push({ x: c.x, y: c.y, col: '#ffb060', txt: 'Campamento (checkpoint)' }); }
+    if (S.obj === 'return' || (S.obj === 'clear' && S.clueIdx - 1 < CHECK_CAMPS.length)) { const c = CHECK_CAMPS[S.clueIdx - 1]; goals.push({ x: c.x, y: c.y, col: S.obj === 'clear' ? '#8a7a6a' : '#ffb060', txt: S.obj === 'clear' ? 'Campamento (despeja la zona)' : 'Campamento (checkpoint)' }); }
     else if (S.seq.phase === 'prep' && S.night === 0) goals.push({ x: 0, y: -240, col: '#b5d86a', txt: 'Salida del refugio' });
     const pulse = 0.6 + 0.4 * Math.sin(t * 4);
     for (const gl of goals) {
@@ -5082,6 +5191,7 @@
     requestAnimationFrame(frame);
     menuAudio();
     rainAudio();
+    cpAudio();
     const fd = prevT ? t - prevT : 16.7; prevT = t;
     // static screens (pause, shop, perks, death) and the phone menu need far fewer frames
     const still = S.state !== 'play' && S.state !== 'cine' && S.state !== 'menu';
