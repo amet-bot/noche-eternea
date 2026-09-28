@@ -261,7 +261,7 @@
   <div class="xpline"><i id="xpf"></i></div>
   <div class="hudrow">
     <div class="stat">
-      <span class="label">Noche</span><b id="lvl">1</b>
+      <span class="label">Campamento</span><b id="lvl">1</b>
       <span class="next lvtag" id="lvTag">Nv 1</span>
       <span class="next" id="next"></span>
       <span class="next clue" id="clueHud"></span>
@@ -308,10 +308,10 @@
 
 <div class="overlay menu" id="start">
   <div class="menubox">
-    <span class="label kicker">Supervivencia · 5 noches</span>
+    <span class="label kicker">Supervivencia · 5 campamentos</span>
     <h1>Noche Eterna</h1>
     <div class="orn" aria-hidden="true"><i></i></div>
-    <p class="tag">Lucía sigue viva en el hospital San Rafael. Cada noche sales del refugio un poco más lejos. Cada noche son más.</p>
+    <p class="tag">Lucía sigue viva en el hospital San Rafael. De campamento en campamento te acercas a ella. Cada tramo, son más.</p>
     <div class="menubtns">
       <button class="mbtn primary" id="continueBtn" type="button" hidden>Continuar</button>
       <button class="mbtn" id="playBtn" type="button">Nueva partida</button>
@@ -357,7 +357,7 @@
 <div class="overlay" id="map" hidden>
   <div class="mapbox">
     <div class="maphead">
-      <div><span class="label" id="mapKicker">Plan de expedición</span><h2 id="mapTitle">Noche 1</h2></div>
+      <div><span class="label" id="mapKicker">Plan de expedición</span><h2 id="mapTitle">Campamento 1</h2></div>
       <button class="btn" id="mapClose" type="button">Entendido</button>
     </div>
     <div class="mapbody">
@@ -377,7 +377,7 @@
 
 <div class="overlay" id="camp" hidden>
   <div class="box">
-    <h2 id="campTitle">Noche superada</h2>
+    <h2 id="campTitle">Campamento alcanzado</h2>
     <p id="campStats"></p>
     <div class="camplines" id="campLines"></div>
     <span class="label">Chatarra disponible: <b id="scrapNow">0</b></span>
@@ -391,13 +391,13 @@
     <h2 class="dead" id="overTitle">Has caído</h2>
     <p class="quote" id="overQuote"></p>
     <div class="summary">
-      <div><span class="label">Noche</span><b id="sNight">1</b></div>
+      <div><span class="label">Campamento</span><b id="sNight">1</b></div>
       <div><span class="label">Pistas</span><b id="sClues">0/5</b></div>
       <div><span class="label">Bajas</span><b id="sKills">0</b></div>
       <div><span class="label">Notas</span><b id="sLore">0</b></div>
     </div>
     <p id="sLost"></p>
-    <button class="btn" id="againBtn" type="button">Reintentar la noche</button>
+    <button class="btn" id="againBtn" type="button">Reintentar desde el campamento</button>
     <button class="btn ghost" id="newBtn" type="button">Nueva partida</button>
     <button class="btn ghost" id="overMenu" type="button">Menú principal</button>
   </div>
@@ -468,8 +468,8 @@
     ['combo60', 'Imparable', 'Consigue un combo de 60', m => m.bestCombo >= 60],
     ['horda', 'Aguanta', 'Sobrevive a una horda', m => m.hordes >= 1],
     ['horda10', 'Muro de carne', 'Sobrevive a 10 hordas', m => m.hordes >= 10],
-    ['nivel10', 'En racha', 'Llega al nivel 10 en una sola noche', m => m.bestLevel >= 10],
-    ['noche3', 'Veterano', 'Supera la noche 3', m => m.bestNight >= 3],
+    ['nivel10', 'En racha', 'Llega al nivel 10 en un solo tramo', m => m.bestLevel >= 10],
+    ['noche3', 'Veterano', 'Llega al campamento 3', m => m.bestNight >= 3],
     ['sigilo', 'Sombra', 'Mata a un zombi desprevenido con el cuchillo', m => m.stealth >= 1],
     ['elite', 'Cazador de oro', 'Mata a 10 zombis de élite', m => m.elites >= 10],
     ['jefe', 'Matagigantes', 'Derrota a la Abominación', m => m.boss >= 1],
@@ -1059,7 +1059,7 @@
   };
 
   // The trail Lucía's group left while fleeing to the hospital
-  const HOSPITAL = { x: 900, y: -9200 };
+  const HOSPITAL = { x: 1800, y: -21000 };
   const CLUES = [
     { name: 'Pañuelo azul', text: 'Un pañuelo atado a una rama, con una «L» bordada. Tiene sangre seca.', say: ['marco', 'Es suyo, seguro. Pasó por aquí huyendo.'] },
     { name: 'Nota arrugada', text: '«Somos cuatro. Vamos al hospital por el bosque. Si alguien lee esto, síguenos.» — L.', say: ['marco', 'Eran cuatro… y ahora está sola. Sigue el rastro.'] },
@@ -1069,7 +1069,7 @@
   ];
   const CLUE_POS = CLUES.map((c, i) => {
     const f = (i + 1) / (CLUES.length + 1), L = Math.hypot(HOSPITAL.x, HOSPITAL.y);
-    const nx = -HOSPITAL.y / L, ny = HOSPITAL.x / L, off = (i % 2 ? 1 : -1) * (1500 + hash(i, 42) * 900);
+    const nx = -HOSPITAL.y / L, ny = HOSPITAL.x / L, off = (i % 2 ? 1 : -1) * (3000 + hash(i, 42) * 1800);
     return { x: HOSPITAL.x * f + nx * off, y: HOSPITAL.y * f + ny * off };
   });
 
@@ -1852,8 +1852,8 @@
   ];
   const NIGHT_TITLES = ['El primer rastro', 'Más adentro del bosque', 'Los puestos caídos', 'La voz en la estática', 'San Rafael'];
   const isFinal = n => n >= NIGHTS.length - 1;
-  const nightLabel = n => isFinal(n) ? 'NOCHE FINAL' : `NOCHE ${n + 1}`;
-  const nightName = n => isFinal(n) ? 'Noche final' : `Noche ${n + 1}`;
+  const nightLabel = n => isFinal(n) ? 'CAMPAMENTO FINAL' : `CAMPAMENTO ${n + 1}`;
+  const nightName = n => isFinal(n) ? 'Campamento final' : `Campamento ${n + 1}`;
   const unlockNight = id => NIGHTS.findIndex(n => n.reward === id) + 2;
   let RUN = null;
   function newGuns() {
@@ -2957,7 +2957,7 @@
       g.globalCompositeOperation = 'lighter';
       for (let j = 0; j < 24; j++) { const p = (t * 0.7 + j * 0.21) % 1; g.fillStyle = `rgba(255,${150 + j % 3 * 30},60,${(1 - p) * 0.9})`; g.fillRect(W / 2 - full / 2 + hash(j, 1) * full, cy + base * 0.05 - p * base * 0.16, 2, 2); }
       g.globalCompositeOperation = 'source-over';
-      if (t > 4.9) { g.globalAlpha = a * Math.min(1, (t - 4.9) / 0.4); g.font = `700 ${Math.max(10, base * 0.024)}px "IBM Plex Mono", monospace`; g.fillStyle = '#ffb070'; g.fillText('N U E V O   E N E M I G O   ·   N O C H E   3', W / 2, cy + base * 0.095); }
+      if (t > 4.9) { g.globalAlpha = a * Math.min(1, (t - 4.9) / 0.4); g.font = `700 ${Math.max(10, base * 0.024)}px "IBM Plex Mono", monospace`; g.fillStyle = '#ffb070'; g.fillText('N U E V O   E N E M I G O   ·   C A M P A M E N T O   3', W / 2, cy + base * 0.095); }
       g.restore();
     }
     if (t > 5.2 && t < 10.4) {
@@ -3022,7 +3022,7 @@
     [['you', 'Un pañuelo azul… con una «L» bordada. Es de Lucía.'], ['marco', 'Hay sangre, pero poca. Siguió corriendo. Descansa en ese campamento, mañana seguimos.'], ['you', 'Aguanta, Lucía. Voy a por ti.']],
     [['you', '«Somos cuatro. Vamos al hospital por el bosque.» Eran cuatro…'], ['marco', 'Y en la radio solo se la oye a ella. No quiero pensar en los otros tres.'], ['lucia', '…¿me oyes?… no estoy sola aquí dentro… hay algo en los pasillos…']],
     [['you', 'Lucía Morales. San Rafael, planta tres. Se la arrancaron.'], ['marco', 'Planta tres. Ya sabemos dónde buscar.'], ['you', 'Esta noche vi algo salir del fuego, Marco. Algo que corría.'], ['marco', 'El Calcinado. Si te lo cruzas otra vez, no te pares a mirarlo.']],
-    [['lucia', '…no vayas por la carretera… busca el mapa… están en todas partes…'], ['you', '¡Lucía! ¡Lucía, contesta!'], ['marco', 'Se cortó… pero está viva. Descansa. La próxima es la última noche.']],
+    [['lucia', '…no vayas por la carretera… busca el mapa… están en todas partes…'], ['you', '¡Lucía! ¡Lucía, contesta!'], ['marco', 'Se cortó… pero está viva. Descansa. El próximo tramo es el último.']],
     [['you', 'Un mapa… la ruta en rojo termina en una cruz. El hospital.'], ['marco', 'San Rafael. Es territorio de ellos. Entra, sácala y no mires atrás.'], ['lucia', '…te veo… desde la ventana… date prisa, por favor…']],
   ];
   const CP_WHO = { you: ['TÚ', '#e9b949'], marco: ['MARCO · RADIO', '#b5d86a'], lucia: ['LUCÍA · SEÑAL DÉBIL', '#e58a8a'] };
@@ -3123,7 +3123,7 @@
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.globalAlpha = Math.min(1, Q.t / 0.6);
     g.font = `700 ${Math.max(10, base * 0.022)}px "IBM Plex Mono", monospace`; g.fillStyle = '#7fd1c8';
-    g.fillText(Q.cp < CLUES.length - 1 ? `C H E C K P O I N T   ${Q.cp + 1}   ·   P I S T A   ${Q.cp + 1}   D E   ${CLUES.length}` : `P I S T A   ${CLUES.length}   D E   ${CLUES.length}`, W / 2, bh + base * 0.05);
+    g.fillText(Q.cp < CLUES.length - 1 ? `C A M P A M E N T O   ${Q.cp + 1}   ·   P I S T A   ${Q.cp + 1}   D E   ${CLUES.length}` : `P I S T A   ${CLUES.length}   D E   ${CLUES.length}`, W / 2, bh + base * 0.05);
     const NAME = CLUES[Q.cp].name, shown = Math.min(NAME.length, Math.floor(Q.t * 18));
     g.font = `400 ${Math.round(base * 0.075)}px "Pirata One", Georgia, serif`; g.fillStyle = '#e9b949'; g.fillText(NAME.slice(0, shown), W / 2, bh + base * 0.13);
     g.globalAlpha = 1;
@@ -3257,8 +3257,8 @@
     $('playBtn').textContent = 'Nueva partida'; $('playBtn').classList.remove('warn'); $('playBtn').classList.toggle('primary', !r);
     $('achCount').textContent = `${ACH.filter(a => META.ach[a[0]]).length}/${ACH.length}`;
     $('records').innerHTML = META.kills
-      ? `<span>Bajas <b>${META.kills}</b></span><span>Mejor combo <b>x${META.bestCombo}</b></span><span>Noche más lejana <b>${META.bestNight}</b></span><span>Nivel máximo <b>${META.bestLevel}</b></span>`
-      : '<span>Tu primera noche te espera.</span>';
+      ? `<span>Bajas <b>${META.kills}</b></span><span>Mejor combo <b>x${META.bestCombo}</b></span><span>Campamento más lejano <b>${META.bestNight}</b></span><span>Nivel máximo <b>${META.bestLevel}</b></span>`
+      : '<span>Tu primera expedición te espera.</span>';
   }
   function goMenu() {
     newGame(); S.state = 'menu';
@@ -3339,7 +3339,7 @@
     for (const id of ORDER) if (RUN.guns[id].owned) RUN.guns[id].res += AMMO[id].pack + 25;
     lines.push('Acampas junto al fuego. En las cajas hay munición que dejó el grupo de Lucía (+25 balas por arma), y descansar te cura. Por radio, el refugio te ofrece lo que tienen.');
     RUN.night = Math.min(n + 1, NIGHTS.length - 1);
-    $('campTitle').textContent = `Checkpoint ${n + 1} · Noche ${n + 1} superada`;
+    $('campTitle').textContent = `Campamento ${n + 1} alcanzado`;
     $('campStats').innerHTML = `Pista: <b>${CLUES[RUN.clueIdx - 1].name}</b> · Zombis abatidos: <b>${S.kills}</b> · Chatarra traída: <b>${S.nightScrap}</b>`;
     $('campLines').innerHTML = lines.map(l => `<p>${l}</p>`).join('');
     $('nextNight').textContent = `Salir · ${nightName(RUN.night)}`;
@@ -3408,7 +3408,7 @@
     if (!S || (S.state !== 'play' && S.state !== 'map')) return;
     S.mapFrom = 'play'; S.state = 'map'; input.fire = false;
     $('mapKicker').textContent = brief ? 'Plan de expedición' : 'Mapa del sector';
-    $('mapTitle').textContent = `Noche ${S.night + 1}`;
+    $('mapTitle').textContent = nightName(S.night);
     $('mapClose').textContent = brief ? 'Entendido' : 'Cerrar';
     $('map').hidden = false;
     SFX.click();
@@ -3552,7 +3552,7 @@
       el.classList.toggle('on', S.cur === id);
       el.classList.toggle('locked', !g.owned);
       el.querySelector('.st').textContent = g.owned ? '★'.repeat(g.l) : '';
-      const am = !g.owned ? `noche ${unlockNight(id)}` : g.rel > 0 ? 'recargando' : `${g.ammo} · ${g.res}`;
+      const am = !g.owned ? `camp. ${unlockNight(id)}` : g.rel > 0 ? 'recargando' : `${g.ammo} · ${g.res}`;
       const amEl = el.querySelector('.am'); if (amEl.textContent !== am) amEl.textContent = am;
       el.querySelector('.rl').style.width = g.rel > 0 ? ((1 - g.rel / g.relMax) * 100).toFixed(0) + '%' : '0';
     }
@@ -4116,7 +4116,7 @@
       ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.font = `700 ${Math.max(10, base * 0.024)}px "IBM Plex Mono", monospace`; ctx.fillStyle = '#9c93a2';
       ctx.fillText(fin ? 'L A   Ú L T I M A' : `${S.night + 1}   D E   ${NIGHTS.length}`, W / 2, cy - base * 0.18);
-      ctx.font = `400 ${Math.round(base * 0.2 * (1 + tt * 0.03))}px "Pirata One", Georgia, serif`;
+      ctx.font = `400 ${Math.round(base * 0.13 * (1 + tt * 0.03))}px "Pirata One", Georgia, serif`;
       ctx.fillStyle = '#1a0606'; ctx.fillText(nightLabel(S.night), W / 2 + 4, cy + 5);
       ctx.fillStyle = col; ctx.fillText(nightLabel(S.night), W / 2, cy);
       const lw = base * 0.5 * Math.min(1, tt / 1.2);
@@ -4166,7 +4166,7 @@
       const tt = Q.t;
       const sc = 0.6 + ease(Math.min(1, tt * 4)) * 0.5 + tt * 0.08;
       ctx.globalAlpha = tt < 1.1 ? 1 : Math.max(0, 1 - (tt - 1.1) / 0.7);
-      big(Q.label, base * (Q.label.length > 4 ? 0.2 : 0.36) * sc, '#fff1c8', 'rgba(233,185,73,.9)');
+      big(Q.label, base * (Q.label.length > 10 ? 0.11 : Q.label.length > 4 ? 0.14 : 0.36) * sc, '#fff1c8', 'rgba(233,185,73,.9)');
       small(Q.sub, base * 0.22, '#e9b949');
     } else if (Q.phase === 'clear') {
       const tt = Q.t, sc = 1.3 - ease(Math.min(1, tt * 2)) * 0.3;

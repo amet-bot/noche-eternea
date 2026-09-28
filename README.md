@@ -2,7 +2,7 @@
 
 Juego de acción y supervivencia en 2D para navegador, PC y celular. Lucía está atrapada en el hospital San Rafael: cada noche sales del Refugio Norte, sigues sus pistas entre hordas de zombis y vuelves con vida.
 
-- 5 noches, cada una más difícil
+- 5 campamentos, cada tramo más difícil
 - Zombis escupidores de ácido, hinchados que revientan, acechadores que saltan, brutos y un jefe
 - Armas: MP5, escopeta, AK-47, Desert Eagle y lanzagranadas
 - Tienda con Tomás, Marco y Elena, misiones secundarias, mejoras al subir de nivel, combos y logros
