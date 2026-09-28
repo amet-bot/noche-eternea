@@ -885,6 +885,7 @@
     const k = e.key.toLowerCase();
     if (S && S.state === 'perk' && e.key >= '1' && e.key <= '3') { const b = $('perks').children[+e.key - 1]; if (b) b.click(); return; }
     if (S && S.state === 'play' && S.seq.phase === 'fire' && (k === ' ' || k === 'enter' || k === 'escape')) { e.preventDefault(); skipFireIntro(); return; }
+    if (S && S.state === 'play' && S.seq.phase === 'cp' && (k === ' ' || k === 'enter' || k === 'escape')) { e.preventDefault(); advanceCheckScene(k === 'escape'); return; }
     if (S && S.state === 'cine') {
       if (k === 'escape') endCine();
       else if (k === 'enter' || k === ' ') { e.preventDefault(); advanceCine(); }
@@ -916,6 +917,7 @@
   cvs.addEventListener('contextmenu', e => e.preventDefault());
   cvs.addEventListener('pointerdown', e => {
     if (S && S.state === 'play' && S.seq.phase === 'fire') { skipFireIntro(); return; }
+    if (S && S.state === 'play' && S.seq.phase === 'cp') { advanceCheckScene(); return; }
     if (e.pointerType === 'mouse') {
       input.mouse = true; input.mx = e.clientX; input.my = e.clientY;
       if (e.button === 0) input.fire = true;
@@ -1154,8 +1156,23 @@
         const c = campAt(ix, iy);
         if (c && Math.abs(c.x - x) < range && Math.abs(c.y - y) < range) out.push(c);
       }
+    for (const c of CHECK_CAMPS) if (Math.abs(c.x - x) < range && Math.abs(c.y - y) < range) out.push(c);
     return out;
   }
+
+  // Checkpoints: beside each of Lucía's first four marks there is a camp with a fire.
+  // Reaching it ends the night and saves; the next night starts there, and dying sends you back to the last one.
+  const CHECK_CAMPS = CLUE_POS.slice(0, CLUES.length - 1).map((c, i) => {
+    const L = Math.hypot(HOSPITAL.x - c.x, HOSPITAL.y - c.y), ux = (HOSPITAL.x - c.x) / L, uy = (HOSPITAL.y - c.y) / L;
+    let x = c.x + ux * 240, y = c.y + uy * 240;
+    for (let k = 1; k < 6 && onRoad(x, y, 150); k++) { x = c.x + ux * 240 - uy * 160 * k * (k % 2 ? 1 : -1); y = c.y + uy * 240 + ux * 160 * k * (k % 2 ? 1 : -1); }
+    const cp = buildCamp(x, y, 'camp', 'chk' + i, 9100 + i * 37);
+    cp.check = i; cp.attacked = false; cp.burnt = false; cp.wounded = null; cp.kits = [];
+    cp.props = cp.props.filter(pr => pr.t !== 'body' && pr.t !== 'trail'); cp.tents.forEach(tn => { tn.torn = false; });
+    return cp;
+  });
+  const startPoint = n => n > 0 ? { x: CHECK_CAMPS[n - 1].x, y: CHECK_CAMPS[n - 1].y + 70 } : { x: 0, y: 80 };
+  const inStart = (x, y, n) => n > 0 ? Math.hypot(x - CHECK_CAMPS[n - 1].x, y - CHECK_CAMPS[n - 1].y) < 230 : insideBase(x, y);
 
   // Sheds, cabins and abandoned military outposts you can walk into and search
   const FC = 1300, featCache = new Map();
@@ -1837,7 +1854,7 @@
     if (RUN.guns.mp5.res + RUN.guns.mp5.ammo < 120) RUN.guns.mp5.res = 120;
     S = {
       state: 'menu', t: 0, kills: 0, night: Math.min(RUN.night, NIGHTS.length - 1),
-      p: { x: 0, y: 80, vx: 0, vy: 0, r: 12, roll: 0, rollCd: 0, rollX: 0, rollY: 0, hp: RUN.maxHp, maxHp: RUN.maxHp, speed: 150, face: 1, inv: 0, armor: RUN.armor, walk: 0, aim: -1.57, recoil: 0, stam: 100, stamCd: 0, sprint: false },
+      p: { x: startPoint(Math.min(RUN.night, NIGHTS.length - 1)).x, y: startPoint(Math.min(RUN.night, NIGHTS.length - 1)).y, vx: 0, vy: 0, r: 12, roll: 0, rollCd: 0, rollX: 0, rollY: 0, hp: RUN.maxHp, maxHp: RUN.maxHp, speed: 150, face: 1, inv: 0, armor: RUN.armor, walk: 0, aim: -1.57, recoil: 0, stam: 100, stamCd: 0, sprint: false },
       guns: RUN.guns, cur: 'mp5', switchT: 0, knifeCd: 0,
       items: { vest: RUN.armor ? 1 : 0 },
       seq: { phase: 'done', t: 0, n: 0 },
@@ -2210,10 +2227,10 @@
     note(`Pista ${i + 1} de ${CLUES.length} · ${c.name}`, c.text);
     S.fx.push({ type: 'ring', x: c.x, y: c.y, life: 0.8, max: 0.8, teal: true });
     radio(c.say[1], c.say[0]);
-    if (RUN.clueIdx >= CLUES.length) { S.obj = 'hospital'; S.hospitalShown = true; banner('Hospital San Rafael'); }
+    if (RUN.clueIdx >= CLUES.length) { S.obj = 'hospital'; S.hospitalShown = true; banner('Hospital San Rafael'); startCheckScene(i); }
     else {
-      S.obj = 'return'; RUN.needReturn = true; banner('¡Vuelve al refugio! Te han olido');
-      radio('Buen trabajo. Ahora vuelve al refugio, y no te entretengas: te han olido y vienen detrás de ti.');
+      S.obj = 'return'; RUN.needReturn = true; banner('¡Llega a la fogata! Te han olido');
+      radio('Buen trabajo. Hay un campamento con fuego a unos pasos: es tu refugio esta noche. Llega antes de que te alcancen.');
       // the dead pick up your trail: a pack hunts you from the edges
       for (let k = 0, n = 3 + Math.round(S.night * 1.5); k < n; k++) { const e = spawnEnemy(pickType(true)); e.state = 'chase'; }
       S.cutT = 7;
@@ -2304,6 +2321,7 @@
     p.inv = Math.max(0, p.inv - dt);
     p.recoil = Math.max(0, p.recoil - dt * 40);
 
+    if (S.night > 0 && S.seq.phase === 'prep' && inStart(p.x, p.y, S.night) && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + 12 * dt);
     const medic = NPCS[2];
     if (Math.hypot(p.x - medic.x, p.y - medic.y) < 90 && p.hp < p.maxHp) {
       p.hp = Math.min(p.maxHp, p.hp + 9 * dt); SFX.heal();
@@ -2404,9 +2422,10 @@
       if (p.hp <= 0) return gameOver();
     }
     // on the way back they cut you off: small groups come from the direction of the refuge
-    if (live && S.obj === 'return' && !inBase && Math.hypot(p.x, p.y) > 550 && (S.cutT = (S.cutT ?? 8) - dt) <= 0) {
+    const cutGoal = S.obj === 'return' ? CHECK_CAMPS[S.clueIdx - 1] : null;
+    if (live && cutGoal && Math.hypot(p.x - cutGoal.x, p.y - cutGoal.y) > 550 && (S.cutT = (S.cutT ?? 8) - dt) <= 0) {
       S.cutT = rand(10, 14) - S.night * 0.8;
-      const a = Math.atan2(-p.y, -p.x);
+      const a = Math.atan2(cutGoal.y - p.y, cutGoal.x - p.x);
       for (let i = 0, n = 2 + Math.floor(S.night / 2); i < n; i++) { const e = spawnEnemy(pickType(true), undefined, undefined, undefined, a + rand(-0.5, 0.5)); e.state = 'chase'; }
     }
     // an ambush waits at every mark
@@ -2420,7 +2439,8 @@
 
     // objectives
     if (live && S.obj === 'clue') { const c = S.clues[S.clueIdx]; if (Math.hypot(c.x - p.x, c.y - p.y) < 28) findClue(c, S.clueIdx); }
-    if (live && S.obj === 'return' && inBase) return nightComplete();
+    const goalCamp = S.obj === 'return' ? CHECK_CAMPS[S.clueIdx - 1] : null;
+    if (live && goalCamp && Math.hypot(p.x - goalCamp.x, p.y - goalCamp.y) < 120) return startCheckScene(S.clueIdx - 1);
     if (live && S.obj === 'hospital' && !S.hospitalReached && Math.abs(p.x - HOSPITAL.x) < 340 && p.y > HOSPITAL.y && p.y < HOSPITAL.y + 200) return ending();
 
     // camp chests, medkits, the wounded
@@ -2444,7 +2464,7 @@
       if (c.kind === 'camp' && !S.looted.has(c.key) && d < 330) {
         S.looted.add(c.key);
         S.chests.push({ x: c.chestSpot.x, y: c.chestSpot.y, r: 14 });
-        banner(c.attacked ? 'Campamento arrasado' : 'Campamento abandonado');
+        if (c.check === undefined) banner(c.attacked ? 'Campamento arrasado' : 'Campamento abandonado');
       }
     }
     if (fireNear < 320 && (S.crackT -= dt) <= 0) { S.crackT = rand(0.06, 0.3); SFX.crackle(1 - fireNear / 320); }
@@ -2765,13 +2785,15 @@
       if (Q.t > 3.6) { Q.t = 0; if (S.night === 2 && !RUN.fireIntro) { Q.phase = 'fire'; Q.f = {}; } else Q.phase = 'fadein'; }
     } else if (Q.phase === 'fire') {
       fireIntroTick(Q);
+    } else if (Q.phase === 'cp') {
+      checkSceneTick(Q, dt);
     } else if (Q.phase === 'fadein') {
       if (Q.t > 1.0) {
         Q.phase = 'prep'; Q.t = 0; document.body.classList.remove('intro');
-        radio('Aquí Marco. La brújula de abajo a la derecha te marca adónde ir. Cuando estés listo, sal por la puerta norte.');
+        radio(S.night === 0 ? 'Aquí Marco. La brújula de abajo a la derecha te marca adónde ir. Cuando estés listo, sal por la puerta norte.' : 'Aquí Marco. Descansaste junto al fuego. Cuando estés listo, deja el campamento: la brújula te marca la siguiente pista.');
       }
     } else if (Q.phase === 'prep') {
-      if (!insideBase(S.p.x, S.p.y)) { Q.phase = 'count'; Q.t = 0; Q.n = 0; SFX.riser(); document.body.classList.add('intro'); }
+      if (!inStart(S.p.x, S.p.y, S.night)) { Q.phase = 'count'; Q.t = 0; Q.n = 0; SFX.riser(); document.body.classList.add('intro'); }
     } else if (Q.phase === 'count') {
       const n = 3 - Math.floor(Q.t);
       if (n >= 1 && n !== Q.n) { Q.n = n; SFX.taiko(n); S.shake = Math.max(S.shake, 6 + (3 - n) * 3); }
@@ -2958,16 +2980,114 @@
     for (const [fx, fy, s0] of [[2, -110 - roar * 3, 0.5], [-14, -80, 0.36], [16, -80, 0.36], [hL[0], hL[1], 0.26], [hR[0], hR[1], 0.26], [0, -45, 0.3]]) { g.save(); g.translate(fx, fy); g.scale(s0 * fs, s0 * fs); drawFlamesOn(g, 0, 0, t * 1.3 + fx, fx * 0.3); g.restore(); }
     g.restore();
   }
+  // What is said at each checkpoint: who ('you', 'marco', 'lucia') and the line
+  const CP_TALK = [
+    [['you', 'Un pañuelo azul… con una «L» bordada. Es de Lucía.'], ['marco', 'Hay sangre, pero poca. Siguió corriendo. Descansa en ese campamento, mañana seguimos.'], ['you', 'Aguanta, Lucía. Voy a por ti.']],
+    [['you', '«Somos cuatro. Vamos al hospital por el bosque.» Eran cuatro…'], ['marco', 'Y en la radio solo se la oye a ella. No quiero pensar en los otros tres.'], ['lucia', '…¿me oyes?… no estoy sola aquí dentro… hay algo en los pasillos…']],
+    [['you', 'Lucía Morales. San Rafael, planta tres. Se la arrancaron.'], ['marco', 'Planta tres. Ya sabemos dónde buscar.'], ['you', 'Esta noche vi algo salir del fuego, Marco. Algo que corría.'], ['marco', 'El Calcinado. Si te lo cruzas otra vez, no te pares a mirarlo.']],
+    [['lucia', '…no vayas por la carretera… busca el mapa… están en todas partes…'], ['you', '¡Lucía! ¡Lucía, contesta!'], ['marco', 'Se cortó… pero está viva. Descansa. La próxima es la última noche.']],
+    [['you', 'Un mapa… la ruta en rojo termina en una cruz. El hospital.'], ['marco', 'San Rafael. Es territorio de ellos. Entra, sácala y no mires atrás.'], ['lucia', '…te veo… desde la ventana… date prisa, por favor…']],
+  ];
+  const CP_WHO = { you: ['TÚ', '#e9b949'], marco: ['MARCO · RADIO', '#b5d86a'], lucia: ['LUCÍA · SEÑAL DÉBIL', '#e58a8a'] };
+  function startCheckScene(i) {
+    // the fire keeps them back while you catch your breath
+    S.enemies = []; S.eshots = []; S.pools = []; S.dash = null; S.flames = []; S.burn = 0; input.fire = false;
+    S.seq = { phase: 'cp', t: 0, cp: i, line: 0, lt: 0 };
+    clearRadio(); $('note').hidden = true; noteLife = 0; $('toast').hidden = true; toastLife = 0; bannerLife = 0;
+    document.body.classList.add('intro'); setMusicGain(AU.musicOn ? 0.12 : 0, 0.8);
+    SFX.clue(); SFX.crackle(1);
+  }
+  function checkSceneTick(Q, dt) {
+    const L = CP_TALK[Q.cp][Q.line];
+    Q.lt += dt;
+    if (L && Q.lt === dt) { if (L[0] === 'lucia') SFX.staticBurst(); else if (L[0] === 'marco') SFX.radio(); }
+    if (Math.random() < 0.3) SFX.crackle(0.5);
+    if (L && Q.lt > L[1].length / 38 + 2.6) advanceCheckScene();
+  }
+  function advanceCheckScene(all) {
+    const Q = S.seq; if (Q.phase !== 'cp') return;
+    const L = CP_TALK[Q.cp][Q.line];
+    if (!all && L && Q.lt < L[1].length / 38) { Q.lt = L[1].length / 38; return; }
+    Q.line++; Q.lt = 0;
+    if (all || Q.line >= CP_TALK[Q.cp].length) {
+      document.body.classList.remove('intro');
+      if (Q.cp < CLUES.length - 1) return nightComplete();
+      S.seq = { phase: 'done', t: 0, n: 0 }; setMusicGain(AU.musicOn ? 0.4 : 0, 1);
+      radio('Sigue la ruta del mapa hasta el hospital. Te lo marco en la brújula.');
+    }
+  }
+  // the scene: night, the checkpoint fire, you with what you found, the camp behind
+  function drawCheckScene(Q) {
+    if (!MENU.bg) buildMenuArt();
+    const g = ctx, t = S.t, s2 = Math.max(W / 960, H / 540), ox = (W - 960 * s2) / 2, oy = (H - 540 * s2) / 2;
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    g.save(); g.translate(ox + 480 * s2, oy + 290 * s2); g.scale(s2 * (1.02 + Q.t * 0.01), s2 * (1.02 + Q.t * 0.01)); g.translate(-480 + Math.sin(t * 0.3) * 8, -290);
+    const sky = g.createLinearGradient(0, 0, 0, 400); sky.addColorStop(0, '#04050a'); sky.addColorStop(1, '#141220'); g.fillStyle = sky; g.fillRect(-100, -60, 1160, 520);
+    for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(220,225,255,${0.3 + 0.5 * hash(i, 7) * (0.6 + 0.4 * Math.sin(t * 2 + i))})`; g.fillRect(hash(i, 1) * 1000 - 20, hash(i, 2) * 260, 1.5, 1.5); }
+    g.fillStyle = '#06080a'; for (let i = -2; i < 18; i++) { const x = i * 62 + (i % 3) * 11, h = 90 + (Math.abs(i) * 29 % 70); g.beginPath(); g.moveTo(x - 30, 400); g.lineTo(x, 400 - h); g.lineTo(x + 30, 400); g.fill(); }
+    if (Q.cp === CLUES.length - 1) { g.fillStyle = '#07080d'; g.fillRect(620, 250, 150, 150); g.fillRect(660, 222, 70, 30); g.fillStyle = 'rgba(194,65,59,.9)'; g.fillRect(688, 230, 14, 4); g.fillRect(693, 225, 4, 14); g.fillStyle = Math.sin(t * 1.3) > -0.7 ? 'rgba(240,195,110,.95)' : 'rgba(80,60,40,.6)'; g.fillRect(730, 290, 8, 10); }
+    const gr = g.createLinearGradient(0, 400, 0, 540); gr.addColorStop(0, '#15110c'); gr.addColorStop(1, '#060504'); g.fillStyle = gr; g.fillRect(-100, 398, 1160, 180);
+    const FX = 520, FY = 440, fl = 0.85 + 0.15 * Math.sin(t * 9) * Math.sin(t * 5.3);
+    g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_WARM, FX, FY - 30, 340 * fl, 1); g.restore();
+    // tent and supplies of the camp
+    g.fillStyle = '#2a2014'; g.beginPath(); g.moveTo(230, 440); g.lineTo(320, 330); g.lineTo(410, 440); g.fill();
+    g.fillStyle = `rgba(150,90,40,${0.55 * fl})`; g.beginPath(); g.moveTo(320, 330); g.lineTo(410, 440); g.lineTo(340, 440); g.fill();
+    g.fillStyle = '#0a0806'; g.beginPath(); g.moveTo(300, 440); g.lineTo(322, 380); g.lineTo(344, 440); g.fill();
+    g.fillStyle = '#3a2a18'; rr(g, 700, 410, 64, 36, 3); g.fill(); g.fillStyle = '#4a3a22'; g.fillRect(700, 410, 64, 6); rr(g, 740, 380, 44, 32, 3); g.fill();
+    g.fillStyle = `rgba(255,150,70,${0.25 * fl})`; g.fillRect(700, 412, 30, 34);
+    // the fire
+    g.fillStyle = '#2a2622'; for (let i = 0; i < 8; i++) { g.beginPath(); g.ellipse(FX - 40 + i * 11.5, FY + 6, 7, 4.5, 0, 0, 7); g.fill(); }
+    g.fillStyle = '#3a2616'; g.save(); g.translate(FX, FY); g.rotate(0.3); g.fillRect(-28, -4, 56, 8); g.rotate(-0.6); g.fillRect(-28, -4, 56, 8); g.restore();
+    g.save(); g.translate(FX, FY); g.scale(2.3, 2.3); drawFlamesOn(g, 0, 0, t, 3.3); g.restore();
+    for (let j = 0; j < 20; j++) { const p = (t * 0.33 + j * 0.091) % 1; g.fillStyle = `rgba(255,${150 + (j % 3) * 30},70,${1 - p})`; g.fillRect(FX + Math.sin(j * 7 + t * 2) * 26 * p, FY - 20 - p * 240, 2, 2); }
+    // you, standing by the fire holding what you found
+    const [lx, ly] = drawMenuHero(t);
+    g.save(); g.translate(FX - 150, FY + 8); g.scale(-0.85, 0.85); g.drawImage(MENU.hero, -130, -318); g.restore();
+    const ix = FX - 95, iy = FY - 120 + Math.sin(t * 2) * 3;
+    g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_ACID, ix, iy, 34, 0.3); stamp(g, ST_WARM, ix, iy, 30, 0.6); g.restore();
+    drawClueItem(g, Q.cp, ix, iy, t);
+    g.restore();
+    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.62); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.65)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+    // letterbox, the mark's name, the dialogue
+    const bh = Math.min(70, H * 0.09), base = Math.min(W, H); g.fillStyle = '#000'; g.fillRect(0, 0, W, bh); g.fillRect(0, H - bh, W, bh);
+    const a0 = Math.min(1, Q.t / 0.6);
+    g.globalAlpha = a0; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `700 ${Math.max(10, base * 0.022)}px "IBM Plex Mono", monospace`; g.fillStyle = '#7fd1c8';
+    g.fillText(Q.cp < CLUES.length - 1 ? `C H E C K P O I N T   ${Q.cp + 1}   ·   P I S T A   ${Q.cp + 1}   D E   ${CLUES.length}` : `P I S T A   ${CLUES.length}   D E   ${CLUES.length}`, W / 2, bh + base * 0.05);
+    g.font = `400 ${Math.round(base * 0.075)}px "Pirata One", Georgia, serif`; g.fillStyle = '#e9b949'; g.fillText(CLUES[Q.cp].name, W / 2, bh + base * 0.13);
+    g.globalAlpha = 1;
+    const L = CP_TALK[Q.cp][Q.line];
+    if (L) {
+      const [who, col] = CP_WHO[L[0]], n = Math.min(L[1].length, Math.floor(Q.lt * 38)), w = Math.min(W - 32, 720), h = 80, x = (W - w) / 2, y = H - bh - h - 14;
+      g.fillStyle = 'rgba(12,10,16,.92)'; rr(g, x, y, w, h, 4); g.fill(); g.strokeStyle = col + '66'; g.lineWidth = 1; g.stroke();
+      g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = col; g.font = '700 11px "IBM Plex Mono", monospace'; g.fillText(who, x + 14, y + 10);
+      g.fillStyle = '#efe6d4'; g.font = '400 14px "IBM Plex Mono", monospace';
+      const words = L[1].slice(0, n).split(' '); let line = '', ly = y + 30;
+      for (const wd of words) { const tryL = line ? line + ' ' + wd : wd; if (g.measureText(tryL).width > w - 28) { g.fillText(line, x + 14, ly); line = wd; ly += 19; } else line = tryL; }
+      g.fillText(line, x + 14, ly);
+      g.textAlign = 'right'; g.fillStyle = 'rgba(239,230,212,.45)'; g.font = '400 10px "IBM Plex Mono", monospace'; g.fillText(`${Q.line + 1}/${CP_TALK[Q.cp].length} · ${TOUCH ? 'toca' : 'clic o Espacio'} para seguir`, x + w - 12, y + h - 18);
+    }
+  }
+  // what Lucía left behind, drawn in the hand of the hero
+  function drawClueItem(g, i, x, y, t) {
+    g.save(); g.translate(x, y);
+    if (i === 0) { g.fillStyle = '#3a6ab0'; g.beginPath(); g.moveTo(-18, -10); g.quadraticCurveTo(0, -18, 18, -8); g.lineTo(14, 14); g.quadraticCurveTo(0, 20 + Math.sin(t * 3) * 2, -16, 12); g.fill(); g.fillStyle = '#e9e0c8'; g.font = '700 12px Georgia, serif'; g.textAlign = 'center'; g.fillText('L', 0, 6); g.fillStyle = 'rgba(120,20,20,.8)'; g.beginPath(); g.arc(9, 8, 3, 0, 7); g.fill(); }
+    else if (i === 1) { g.rotate(-0.15); g.fillStyle = '#e8dcc0'; g.fillRect(-18, -22, 36, 44); g.strokeStyle = 'rgba(60,40,30,.7)'; g.lineWidth = 1; for (let k = 0; k < 6; k++) { g.beginPath(); g.moveTo(-13, -14 + k * 6); g.lineTo(10 - (k % 2) * 6, -14 + k * 6); g.stroke(); } }
+    else if (i === 2) { g.strokeStyle = '#f0f0f4'; g.lineWidth = 6; g.beginPath(); g.arc(0, 0, 14, 0.4, Math.PI * 2 - 0.4); g.stroke(); g.fillStyle = '#c2413b'; g.fillRect(-9, -4, 18, 7); }
+    else if (i === 3) { g.fillStyle = '#1e1e22'; rr(g, -10, -18, 20, 36, 3); g.fill(); g.fillStyle = '#333'; g.fillRect(4, -30, 3, 14); g.fillStyle = Math.sin(t * 20) > 0 ? '#ff5a3a' : '#5a1a14'; g.fillRect(-6, -14, 4, 3); g.fillStyle = '#3a3a40'; g.fillRect(-7, -6, 14, 14); if (Math.random() < 0.3) { g.fillStyle = '#9ad0ff'; g.fillRect(-12 + Math.random() * 24, -20 + Math.random() * 40, 2, 2); } }
+    else { g.rotate(0.08); g.fillStyle = '#d8ccaa'; g.fillRect(-26, -18, 52, 36); g.strokeStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.moveTo(-9, -18); g.lineTo(-9, 18); g.moveTo(8, -18); g.lineTo(8, 18); g.stroke(); g.strokeStyle = '#c2301a'; g.lineWidth = 2; g.beginPath(); g.moveTo(-22, 12); g.lineTo(-10, 2); g.lineTo(2, 6); g.lineTo(16, -8); g.stroke(); g.lineWidth = 2.5; g.beginPath(); g.moveTo(14, -12); g.lineTo(20, -4); g.moveTo(20, -12); g.lineTo(14, -4); g.stroke(); }
+    g.restore();
+  }
   function goMoment() {
     const p = S.p, Q = S.seq, N = NIGHTS[S.night];
     Q.phase = 'go'; Q.t = 0; Q.label = nightLabel(S.night);
-    Q.sub = S.obj === 'return' ? 'V U E L V E   A L   R E F U G I O' : S.obj === 'hospital' ? 'L L E G A   A L   H O S P I T A L' : 'E N C U E N T R A   L A   M A R C A';
+    Q.sub = S.obj === 'return' ? 'L L E G A   A L   C A M P A M E N T O' : S.obj === 'hospital' ? 'L L E G A   A L   H O S P I T A L' : 'E N C U E N T R A   L A   M A R C A';
     SFX.go();
     document.body.classList.remove('intro');
     S.shake = 16; S.whiteFlash = 0.55; AU.boost = 6;
     S.fx.push({ type: 'ring', x: p.x, y: p.y, life: 0.9, max: 0.9 });
     S.fx.push({ type: 'ring', x: p.x, y: p.y, life: 0.6, max: 0.6, thin: true });
-    radio(S.obj === 'return' ? 'Encontraste la marca, pero no volviste. Esta vez vuelve al refugio.' : N.brief + (N.side && !RUN.questDone.has(S.night) ? ' ' + N.side.text : ''));
+    radio(S.obj === 'return' ? 'Encontraste la marca, pero no llegaste al campamento. Esta vez llega a la fogata.' : N.brief + (N.side && !RUN.questDone.has(S.night) ? ' ' + N.side.text : ''));
     if (S.night === 0) radio('Clic dispara, 1 y 2 cambian entre MP5 y escopeta, R recarga. Shift para correr, V o clic derecho para el cuchillo. Si te superan, una fogata te da un respiro.');
   }
 
@@ -3108,9 +3228,9 @@
       } else lines.push(`${N.side.who} sigue esperando sus ${N.side.label} (${S.questGot}/${N.side.need}).`);
     }
     for (const id of ORDER) if (RUN.guns[id].owned) RUN.guns[id].res += AMMO[id].pack + 25;
-    lines.push('Marco te ha apartado algo de munición (+25 balas por arma). Elena te cura las heridas.');
+    lines.push('Acampas junto al fuego. En las cajas hay munición que dejó el grupo de Lucía (+25 balas por arma), y descansar te cura. Por radio, el refugio te ofrece lo que tienen.');
     RUN.night = Math.min(n + 1, NIGHTS.length - 1);
-    $('campTitle').textContent = `Noche ${n + 1} superada`;
+    $('campTitle').textContent = `Checkpoint ${n + 1} · Noche ${n + 1} superada`;
     $('campStats').innerHTML = `Pista: <b>${CLUES[RUN.clueIdx - 1].name}</b> · Zombis abatidos: <b>${S.kills}</b> · Chatarra traída: <b>${S.nightScrap}</b>`;
     $('campLines').innerHTML = lines.map(l => `<p>${l}</p>`).join('');
     $('nextNight').textContent = `Salir · ${nightName(RUN.night)}`;
@@ -3172,7 +3292,7 @@
   $('mapClose').addEventListener('click', () => closeMap());
   function mapGoal() {
     if (S.obj === 'clue') return { x: CLUE_POS[S.clueIdx].x, y: CLUE_POS[S.clueIdx].y, name: `Marca de Lucía ${S.clueIdx + 1}`, zone: true };
-    if (S.obj === 'return') return { x: 0, y: 0, name: 'Refugio Norte' };
+    if (S.obj === 'return') { const c = CHECK_CAMPS[S.clueIdx - 1]; return { x: c.x, y: c.y, name: 'Campamento' }; }
     return { x: HOSPITAL.x, y: HOSPITAL.y, name: 'Hospital San Rafael' };
   }
   function openMap(brief) {
@@ -3312,7 +3432,7 @@
     $('timer').classList.toggle('low', S.threat > 80 || S.horde);
     $('kills').textContent = RUN.scrap;
     const obj = S.obj === 'clue' ? `Encuentra la <em>pista ${S.clueIdx + 1}</em> · flecha turquesa`
-      : S.obj === 'return' ? 'Vuelve al <em>refugio</em>' : 'Llega al <em>hospital San Rafael</em>';
+      : S.obj === 'return' ? 'Llega a la <em>fogata del campamento</em>' : 'Llega al <em>hospital San Rafael</em>';
     if ($('next').innerHTML !== obj) $('next').innerHTML = obj;
     const N = NIGHTS[S.night];
     const side = N.side && !RUN.questDone.has(S.night) ? `${N.side.who}: <em>${S.questGot}/${N.side.need}</em> ${N.side.label}` : '';
@@ -3878,6 +3998,7 @@
     const Q = S.seq;
     if (S.whiteFlash > 0) { ctx.fillStyle = `rgba(255,245,225,${S.whiteFlash})`; ctx.fillRect(0, 0, W, H); }
     if (Q.phase === 'fire' && S.state !== 'menu') { drawFireIntro(Q.t); return; }
+    if (Q.phase === 'cp' && S.state !== 'menu') { drawCheckScene(Q); return; }
     if (Q.phase === 'title' && S.state !== 'menu') {
       const tt = Q.t, fin = isFinal(S.night), base = Math.min(W, H), cy = H * 0.46;
       const a = Math.max(0, Math.min(1, tt / 0.7, (3.6 - tt) / 0.7));
@@ -4003,7 +4124,8 @@
     const goals = [];
     if (S.obj === 'clue') goals.push({ x: CLUE_POS[S.clueIdx].x, y: CLUE_POS[S.clueIdx].y, col: '#7fd1c8', txt: `Marca de Lucía ${S.clueIdx + 1}`, zone: true });
     if (S.obj === 'hospital') goals.push({ x: HOSPITAL.x, y: HOSPITAL.y + 60, col: '#ff6a5a', txt: 'Hospital San Rafael' });
-    if (S.obj === 'return' || S.seq.phase === 'prep') goals.push({ x: 0, y: S.seq.phase === 'prep' ? -240 : 0, col: '#b5d86a', txt: S.seq.phase === 'prep' ? 'Salida del refugio' : 'Refugio Norte' });
+    if (S.obj === 'return') { const c = CHECK_CAMPS[S.clueIdx - 1]; goals.push({ x: c.x, y: c.y, col: '#ffb060', txt: 'Campamento (checkpoint)' }); }
+    else if (S.seq.phase === 'prep' && S.night === 0) goals.push({ x: 0, y: -240, col: '#b5d86a', txt: 'Salida del refugio' });
     const pulse = 0.6 + 0.4 * Math.sin(t * 4);
     for (const gl of goals) {
       if (inside(gl.x, gl.y)) {
@@ -4979,7 +5101,7 @@
       if (S.state === 'play') {
         updateSeq(dt);
         if (S.hitstop > 0) { S.hitstop -= dt; dt *= 0.15; }
-        update(dt);
+        if (S.seq.phase !== 'cp') update(dt);
         bannerLife -= dt;
         updateRadio(dt);
         musicTick();
