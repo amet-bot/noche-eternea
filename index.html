@@ -746,6 +746,21 @@
     dl.connect(dg); dg.connect(AU.master); const r = C.createGain(); r.gain.value = 0.5; dg.connect(r); r.connect(AU.rev);
     AU.amb = { s, g, lp, dg, osc };
   }
+  // a soft rain loop for the final night
+  function rainAudio() {
+    if (!AU.C || !AU.noise) return;
+    const want = S.state === 'play' && isFinal(S.night) && AU.sfxOn;
+    if (want === !!AU.rain) return;
+    const C = AU.C, t = now();
+    if (want) {
+      const src = C.createBufferSource(); src.buffer = AU.noise; src.loop = true;
+      const hp = C.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 700;
+      const lp = C.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5200;
+      const g = C.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + 2);
+      src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(AU.sfx); src.start(t);
+      AU.rain = { src, g };
+    } else { const r = AU.rain; r.g.gain.setTargetAtTime(0.0001, t, 0.5); r.src.stop(t + 3); AU.rain = null; }
+  }
   function ambienceMuffle(f) { if (AU.amb) AU.amb.lp.frequency.setTargetAtTime(f, now(), 0.3); }
   function ambienceStop() {
     if (!AU.amb) return;
@@ -2470,7 +2485,7 @@
       } else { c.x += c.vx * dt; c.y += c.vy * dt; c.z += c.vz * dt; c.ph += dt * 22; }
     }
     S.crows = S.crows.filter(c => c.z < 280 && Math.abs(c.x - p.x) < 1600 && Math.abs(c.y - p.y) < 1600);
-    if (S.flies.length < (TOUCH ? 6 : 24) && Math.random() < dt * 4) { const x = camX + rand(0, VW), y = camY + rand(0, VH); if (!insideBase(x, y, 80)) S.flies.push({ x, y, ph: Math.random() * 6, seed: Math.random() * 6, life: rand(6, 12), max: 12 }); }
+    if (false) { const x = camX + rand(0, VW), y = camY + rand(0, VH); if (!insideBase(x, y, 80)) S.flies.push({ x, y, ph: Math.random() * 6, seed: Math.random() * 6, life: rand(6, 12), max: 12 }); }
     for (const f of S.flies) { f.ph += dt; f.life -= dt; f.x += Math.sin(f.ph * 0.7 + f.seed) * 14 * dt; f.y += Math.cos(f.ph * 0.5 + f.seed) * 10 * dt - 3 * dt; }
     S.flies = S.flies.filter(f => f.life > 0);
     if (S.windT > 0) {
@@ -4331,10 +4346,23 @@
       if (Math.random() < 0.06 && S.parts.length < PCAP) S.parts.push({ kind: 'smoke', x: pr.x + rand(-4, 4), y: pr.y - 34, vx: rand(-8, 8), vy: rand(-30, -18), life: rand(1.2, 2), max: 2, size: rand(4, 7) });
     }
     ctx.restore();
-    if (!TOUCH) {
-      // ash drifting down from a burning world
-      ctx.fillStyle = 'rgba(200,195,185,.35)';
-      for (let i = 0; i < 70; i++) { const px = mod(hash(i, 21) * VW + S.t * (8 + hash(i, 3) * 14) + Math.sin(S.t * 0.8 + i) * 12 - camX * 0.15, VW), py = mod(hash(i, 22) * VH + S.t * (16 + hash(i, 4) * 18) - camY * 0.15, VH); ctx.fillRect(px, py, 1.6 + hash(i, 5) * 1.4, 1.6); }
+    // the final night: steady rain, anchored to the world so it never looks painted on the screen
+    if (isFinal(S.night) && S.state !== 'menu') {
+      const n = TOUCH ? 55 : 120, vx = -120, vy = 900, span = 1.0, Wd = VW + 60, Hd = VH + 60;
+      ctx.strokeStyle = 'rgba(175,195,225,.2)'; ctx.lineWidth = 1.1; ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const ph = (S.t / span + hash(i, 41)) % 1, wx = hash(i, 42) * 4000 + vx * ph * span, wy = hash(i, 43) * 4000 + vy * ph * span;
+        const x = mod(wx - camX, Wd) - 30, y = mod(wy - camY, Hd) - 30;
+        ctx.moveTo(x, y); ctx.lineTo(x + vx * 0.018, y + vy * 0.018);
+      }
+      ctx.stroke();
+      // little splashes where it lands
+      ctx.strokeStyle = 'rgba(175,195,225,.25)'; ctx.lineWidth = 1;
+      for (let i = 0; i < (TOUCH ? 8 : 18); i++) {
+        const slot = Math.floor(S.t * 3 + hash(i, 44) * 10), k = (S.t * 3 + hash(i, 44) * 10) % 1;
+        const x = mod(hash(slot, i) * 3000 - camX, VW), y = mod(hash(i, slot) * 3000 - camY, VH);
+        ctx.beginPath(); ctx.ellipse(x, y, 1 + k * 5, (1 + k * 5) * 0.4, 0, 0, 7); ctx.globalAlpha = 1 - k; ctx.stroke(); ctx.globalAlpha = 1;
+      }
     }
     // El Calcinado: warning lane with arrows, the edge marker, the rush and the burning trail
     if (S.flames.length) {
@@ -4931,6 +4959,7 @@
   function frame(t) {
     requestAnimationFrame(frame);
     menuAudio();
+    rainAudio();
     const fd = prevT ? t - prevT : 16.7; prevT = t;
     // static screens (pause, shop, perks, death) and the phone menu need far fewer frames
     const still = S.state !== 'play' && S.state !== 'cine' && S.state !== 'menu';
