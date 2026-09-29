@@ -406,7 +406,7 @@
 <script>
 (() => {
   const cvs = document.getElementById('game');
-  const ctx = cvs.getContext('2d', { alpha: false });
+  let ctx = cvs.getContext('2d', { alpha: false }); // reassigned only while baking sprites
   const light = document.createElement('canvas');
   const lg = light.getContext('2d');
   const fogC = document.createElement('canvas');
@@ -430,18 +430,20 @@
   // play we measure the real frame rate and step down (resolution, fog, detail, 30 FPS)
   // when it falls short, or back up when there is room. The level is remembered.
   const QL = [
-    { rs: 0.85, fog: true, fx: true, pc: 90 },
-    { rs: 0.72, fog: true, fx: true, pc: 70 },
+    { rs: Math.min(1.6, Math.max(1, window.devicePixelRatio || 1)), fog: true, fx: true, pc: 110 },   // HD
+    { rs: 1.2, fog: true, fx: true, pc: 100 },
+    { rs: 0.95, fog: true, fx: true, pc: 90 },
+    { rs: 0.75, fog: true, fx: true, pc: 70 },
     { rs: 0.62, fog: false, fx: false, pc: 50 },
     { rs: 0.52, fog: false, fx: false, pc: 40, fps: 30 },
   ];
-  let QI = TOUCH ? Math.max(0, Math.min(QL.length - 1, store.get('ne_q', 0) | 0)) : 0;
+  let QI = TOUCH ? Math.max(0, Math.min(QL.length - 1, store.get('ne_q2', 0) | 0)) : 0;
   let LOWFX = TOUCH && !QL[QI].fx;
   if (TOUCH) PCAP = QL[QI].pc;
-  const PQ = { t0: 0, n: 0, warm: true, last: 0, good: 0, fails: [0, 0, 0, 0] };
+  const PQ = { t0: 0, n: 0, warm: true, last: 0, good: 0, fails: [0, 0, 0, 0, 0, 0] };
   function setQuality(i, t) {
     QI = i; LOWFX = TOUCH && !QL[i].fx; PCAP = QL[i].pc; PQ.last = t; PQ.good = 0;
-    store.set('ne_q', i); resize();
+    store.set('ne_q2', i); resize();
   }
   function watchQuality(t) {
     if (!TOUCH || S.state !== 'play' || document.hidden) { PQ.t0 = 0; PQ.warm = true; return; }
@@ -486,8 +488,10 @@
   // W,H = screen size. Z = camera zoom. VW,VH = how much of the world is visible.
   let W = 0, H = 0, Z = 1.4, VW = 0, VH = 0;
 
+  let DPR = 1;
   function resize() {
     const dpr = TOUCH ? QL[QI].rs : Math.min(2, Math.max(1.35, window.devicePixelRatio || 1));
+    DPR = dpr;
     W = window.innerWidth; H = window.innerHeight;
     cvs.width = W * dpr; cvs.height = H * dpr;
     cvs.style.width = W + 'px'; cvs.style.height = H + 'px';
@@ -3713,7 +3717,25 @@
   }
 
   function zHead(e, x, y) { const sway = Math.sin(e.ph) * (e.type === 'runner' ? 2.5 : 1.5); return { hx: x + sway, hy: y - e.r * 0.78 }; }
+  const ZC = new Map(), ZC_PH = 12, ZC_DIR = 16;
+  const zPlain = e => TOUCH && !e.big && !e.elite && !(e.flash > 0) && !e.hide && !e.feed && !e.lurk && !(e.rise > 0) && !(e.z > 0) && !(e.crouch > 0) && !(e.pounce > 0) && !(e.stun > 0) && !(e.squash > 0) && !(e.spit > 0) && !(e.fuse > 0) && !(e.scream > 0) && e.type !== 'crawler' && e.type !== 'bloater';
+  function zSprite(e) {
+    const TAU = Math.PI * 2, pi = Math.floor(mod(e.ph, TAU) / TAU * ZC_PH) % ZC_PH, di = Math.round(mod(e.dir, TAU) / TAU * ZC_DIR) % ZC_DIR, sb = Math.floor((e.seed || 0) * 4) % 4;
+    const f = Z * DPR, key = `${e.type}|${pi}|${di}|${sb}|${LOWFX ? 1 : 0}|${f.toFixed(2)}`;
+    let sp = ZC.get(key);
+    if (sp) return sp;
+    if (ZC.size > 700) ZC.clear();
+    const w = Math.ceil(e.r * 5.2), h = Math.ceil(e.r * 5), c = document.createElement('canvas');
+    c.width = Math.ceil(w * f); c.height = Math.ceil(h * f);
+    const g = c.getContext('2d'); g.scale(f, f);
+    const fe = { ...e, ph: (pi + 0.5) / ZC_PH * TAU, dir: di / ZC_DIR * TAU, seed: (sb + 0.5) / 4, flash: 0 };
+    const keep = ctx; ctx = g;
+    try { drawZombieBody(fe, w / 2, h * 0.56); } finally { ctx = keep; }
+    sp = { c, w, h, ox: w / 2, oy: h * 0.56 }; ZC.set(key, sp);
+    return sp;
+  }
   function drawZombie(e, x, y) {
+    if (zPlain(e)) { const sp = zSprite(e); ctx.drawImage(sp.c, x - sp.ox, y - sp.oy, sp.w, sp.h); return; }
     let crouch = e.type === 'crawler' ? 0.5 : e.feed ? 0.62 : e.rise > 0 ? 0.62 + (1 - e.rise / 0.7) * 0.38 : 1, sx = 1;
     if (e.wind > 0) { const w = 1 - e.wind / e.windMax; crouch *= 1 + 0.14 * w; sx = 1 - 0.06 * w; x += Math.sin(S.t * 70) * 1.2 * w; }
     if (e.squash > 0) { const k = e.squash / 0.25; crouch *= 1 - 0.24 * k; sx = 1 + 0.2 * k; }
@@ -4323,6 +4345,7 @@
     rg.addColorStop(0, 'rgba(150,10,10,0)'); rg.addColorStop(1, 'rgba(170,15,15,.75)'); q.fillStyle = rg; q.fillRect(0, 0, r.width, r.height);
     POST.red = r;
   }
+  const FOGC = { n: 0, cam: null };
   function render() {
     const p = S.p, sh = S.shake;
     camX = p.x - VW / 2 + rand(-.5, .5) * sh + S.kickX + S.leadX; camY = p.y - VH / 2 + rand(-.5, .5) * sh + S.kickY + S.leadY;
@@ -4493,7 +4516,11 @@
     fogHoles.push([p.x - camX, p.y - 6 - camY, 170]);
     for (const f of feats) if (f.light && lampOn(f, t)) fogHoles.push([f.light.x - camX, f.light.y - camY, 150]);
     const fogOn = !TOUCH || QL[QI].fog;
-    if (fogOn) { buildFog(t, fogHoles); ctx.globalAlpha = 0.4; ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1; }
+    if (fogOn) {
+      if (!TOUCH || !FOGC.cam || (FOGC.n = (FOGC.n + 1) % 3) === 0) { buildFog(t, fogHoles); FOGC.cam = [camX, camY]; }
+      const fdx = TOUCH ? (FOGC.cam[0] - camX) * Z : 0, fdy = TOUCH ? (FOGC.cam[1] - camY) * Z : 0;
+      ctx.globalAlpha = 0.4; if (TOUCH) ctx.drawImage(fogC, fdx - 4, fdy - 4, W + 8, H + 8); else ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1;
+    }
 
     drawLighting(camps, t, feats);
     if (!TOUCH) { ctx.globalAlpha = 0.07; ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1; }
