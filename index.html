@@ -2465,19 +2465,28 @@
     const atFire = fires.some(f => Math.hypot(f.x - p.x, f.y - p.y) < 170);
     const safe = inBase || atFire;
     S.hordeEvery = Math.max(48, 90 - S.night * 10);
-    if (live && !S.horde && !inBase) S.threat = Math.min(100, S.threat + dt * 100 / S.hordeEvery * (S.obj === 'return' ? 1.3 : 1));
+    if (live && !S.horde && !inBase) S.threat = Math.min(100, S.threat + dt * 100 / S.hordeEvery * (S.obj === 'return' ? 1.3 : 1) * (1 + Math.min(1, (S.stageT || 0) / 300) * 0.5));
     if (live && !S.horde && S.threat >= 100) startHorde();
     if (S.horde) {
       S.hordeLeft -= dt;
       S.threat = Math.max(0, S.hordeLeft / 22 * 100);
-      if ((S.hordeT -= dt) <= 0 && !safe) { S.hordeT = 1.5; for (let i = 0, n = 2 + Math.floor(S.night * 0.7); i < n; i++) { const e = spawnEnemy(pickType(true)); e.state = 'chase'; } }
+      if ((S.hordeT -= dt) <= 0 && !safe) { S.hordeT = 1.5; for (let i = 0, n = E.length > (TOUCH ? 95 : 170) ? 0 : 2 + Math.floor(S.night * 0.7); i < n; i++) { const e = spawnEnemy(pickType(true)); e.state = 'chase'; } }
       if (S.hordeLeft <= 0) endHorde();
     }
     // the road is never empty: most come straight at you
-    const target = inBase ? 3 : Math.round((10 + S.night * 3.5) * nightDiff() * (S.obj === 'return' ? 1.25 : 1) * (TOUCH ? 0.72 : 1));
+    // the longer you take out there, the more of them gather (5 minutes to the worst of it)
+    if (live && !safe && !inStart(p.x, p.y, S.night) && S.seq.phase === 'done') S.stageT = (S.stageT || 0) + dt;
+    const press = Math.min(1, (S.stageT || 0) / 300), pStep = Math.floor(press * 4);
+    if (pStep > (S.pStep || 0)) {
+      S.pStep = pStep;
+      banner(['', 'Se están juntando más…', '¡Cada vez son más! Muévete', '¡Esto se está llenando!', '¡ESTÁN POR TODAS PARTES!'][pStep]);
+      if (pStep === 2) radio('No te quedes quieto. Cada minuto que pasa hay más de ellos. Muévete rápido.');
+      if (pStep >= 3) S.shake = Math.max(S.shake, 4);
+    }
+    const target = inBase ? 3 : Math.round((8 + S.night * 5) * nightDiff() * (1 + press * (0.7 + S.night * 0.2)) * (S.obj === 'return' ? 1.25 : 1) * (TOUCH ? 0.72 : 1));
     if (live && (S.popT -= dt) <= 0) {
-      S.popT = 1.0;
-      if (E.length < target && E.length < 140) {
+      S.popT = 1.0 / (1 + press * 1.5);
+      if (E.length < target && E.length < (TOUCH ? 75 : 140)) {
         const a = Math.random() * 6.28, n = 1 + Math.floor(Math.random() * 3);
         for (let i = 0; i < n; i++) { const e = spawnEnemy(pickType(false), undefined, undefined, undefined, a + rand(-0.4, 0.4)); if (Math.random() < 0.35) { e.state = 'wander'; placeAtEdge(e, a + rand(-0.4, 0.4), rand(150, 400)); } }
       }
