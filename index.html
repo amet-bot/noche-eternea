@@ -336,7 +336,8 @@
       <button class="opt" id="optMusic" type="button">Música <b></b></button>
       <button class="opt" id="optSfx" type="button">Efectos de sonido <b></b></button>
       <button class="opt" id="optVib" type="button">Vibración (celular) <b></b></button>
-      <button class="opt" id="optFps" type="button">Rendimiento <b></b></button>
+      <button class="opt" id="optQual" type="button">Calidad <b></b></button>
+      <button class="opt" id="optFps" type="button">FPS <b></b></button>
       <button class="opt" id="optPix" type="button">Estilo <b></b></button>
       <button class="opt warn" id="optReset" type="button">Borrar progreso y logros <b></b></button>
     </div>
@@ -455,14 +456,25 @@
   // Phones: coarse pointer. They get a lighter renderer and the thumb-friendly layout.
   const TOUCH = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch (err) { return false; } })();
   if (TOUCH) document.body.classList.add('touch');
-  const LS = TOUCH ? 4 : 2;           // light and fog layers render at 1/LS of the screen
+  let LS = TOUCH ? 4 : 2;             // light and fog layers render at 1/LS of the screen (set by the quality)
   let PCAP = TOUCH ? 90 : 300;       // particle budget (lowered by the quality level)
   // Saved on this device: options, lifetime stats and achievements, and the current campaign
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (err) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (err) {} },
   };
-  const OPT = Object.assign({ music: true, sfx: true, vib: true, fps: TOUCH ? 45 : 60 }, store.get('ne_opts', {}));
+  const OPT = Object.assign({ music: true, sfx: true, vib: true, fps: TOUCH ? 45 : 120, quality: 'alta' }, store.get('ne_opts', {}));
+  // 1.34: the laptop is no longer held at 60 FPS
+  if (!OPT.v134) { OPT.v134 = true; if (!TOUCH && OPT.fps < 120) OPT.fps = 120; if (![30, 45, 60, 90, 120].includes(OPT.fps)) OPT.fps = TOUCH ? 45 : 120; store.set('ne_opts', OPT); }
+  if (!['alta', 'media', 'baja'].includes(OPT.quality)) OPT.quality = 'alta';
+  // Graphics quality, chosen in the options. Each step drops the most expensive full-screen passes first.
+  //   res: laptop render density   ls: light/fog layer divisor   fog: fog layers   pc: particle budget
+  const QUAL = {
+    alta:  { res: 2,    ls: 2, fog: 2, clouds: true,  grass: true,  sway: true,  post: true,  grain: true,  critters: true,  corpses: 40, pc: 300, lowfx: false, base: 0 },
+    media: { res: 1.25, ls: 3, fog: 1, clouds: false, grass: true,  sway: true,  post: true,  grain: false, critters: true,  corpses: 20, pc: 170, lowfx: false, base: 2 },
+    baja:  { res: 1,    ls: 4, fog: 0, clouds: false, grass: false, sway: false, post: false, grain: false, critters: false, corpses: 8,  pc: 80,  lowfx: true,  base: 4 },
+  };
+  let QS = QUAL[OPT.quality];
   // Phones: the quality follows what the device can keep up with. Every few seconds of
   // play we measure the real frame rate and step down (resolution, fog, detail, 30 FPS)
   // when it falls short, or back up when there is room. The level is remembered.
@@ -474,12 +486,19 @@
     { rs: 0.62, fog: false, fx: false, pc: 50 },
     { rs: 0.52, fog: false, fx: false, pc: 40, fps: 30 },
   ];
-  let QI = TOUCH ? Math.max(0, Math.min(QL.length - 1, store.get('ne_q2', 0) | 0)) : 0;
-  let LOWFX = TOUCH && !QL[QI].fx;
-  if (TOUCH) PCAP = QL[QI].pc;
+  // phones: the chosen quality is the best the automatic step-down may go back up to
+  let QI = TOUCH ? Math.max(QS.base, Math.min(QL.length - 1, store.get('ne_q2', 0) | 0)) : 0;
+  let LOWFX = (TOUCH && !QL[QI].fx) || QS.lowfx;
+  PCAP = TOUCH ? Math.min(QL[QI].pc, QS.pc) : QS.pc;
+  function applyQuality(q) {
+    OPT.quality = q; QS = QUAL[q]; store.set('ne_opts', OPT);
+    if (TOUCH) { QI = Math.max(QI, QS.base); if (QI > QS.base && q !== 'baja') QI = QS.base; store.set('ne_q2', QI); }
+    LOWFX = (TOUCH && !QL[QI].fx) || QS.lowfx; PCAP = TOUCH ? Math.min(QL[QI].pc, QS.pc) : QS.pc;
+    ZC.clear(); resize();
+  }
   const PQ = { t0: 0, n: 0, warm: true, last: 0, good: 0, fails: [0, 0, 0, 0, 0, 0] };
   function setQuality(i, t) {
-    QI = i; LOWFX = TOUCH && !QL[i].fx; PCAP = QL[i].pc; PQ.last = t; PQ.good = 0;
+    QI = i; LOWFX = (TOUCH && !QL[i].fx) || QS.lowfx; PCAP = Math.min(QL[i].pc, QS.pc); PQ.last = t; PQ.good = 0;
     store.set('ne_q2', i); resize();
   }
   function watchQuality(t) {
@@ -491,7 +510,7 @@
     PQ.t0 = t; PQ.n = 0;
     if (PQ.warm) { PQ.warm = false; return; }
     if (fps < want * 0.8 && QI < QL.length - 1) { PQ.fails[QI]++; setQuality(QI + 1, t); }
-    else if (fps > want * 0.97 && QI > 0 && PQ.fails[QI - 1] < 2 && t - PQ.last > 30000) { if (++PQ.good >= 4) setQuality(QI - 1, t); }
+    else if (fps > want * 0.97 && QI > QS.base && PQ.fails[QI - 1] < 2 && t - PQ.last > 30000) { if (++PQ.good >= 4) setQuality(QI - 1, t); }
     else PQ.good = 0;
   }
   const saveOpts = () => store.set('ne_opts', OPT);
@@ -529,7 +548,9 @@
   let DPR = 1;
   function resize() {
     // in pixel art the laptop draws at the screen's own density, so each art pixel is a whole number of screen pixels
-    const dpr = TOUCH ? QL[QI].rs : PIX ? (window.devicePixelRatio || 1) : Math.min(2, Math.max(1.35, window.devicePixelRatio || 1));
+    const dev = window.devicePixelRatio || 1;
+    const dpr = TOUCH ? QL[QI].rs : QS.res <= 1 ? 1 : PIX ? dev : Math.min(QS.res, Math.max(QS.res >= 2 ? 1.35 : 1, dev));
+    LS = TOUCH ? 4 : QS.ls;
     DPR = dpr;
     W = window.innerWidth; H = window.innerHeight;
     cvs.width = W * dpr; cvs.height = H * dpr;
@@ -1840,7 +1861,7 @@
     fgx.globalCompositeOperation = 'source-over';
     fgx.clearRect(0, 0, fogC.width, fogC.height);
     const layers = [[1000, t * 14 * wind, t * 5, 1], [1500, -t * 9, t * 3, 0.7]];
-    for (const [size, dx, dy, a] of (TOUCH ? layers.slice(0, 1) : layers)) {
+    for (const [size, dx, dy, a] of (TOUCH || QS.fog < 2 ? layers.slice(0, 1) : layers)) {
       fgx.globalAlpha = a;
       const ox = mod(camX - dx, size), oy = mod(camY - dy, size);
       for (let x = -ox; x < VW; x += size) for (let y = -oy; y < VH; y += size) fgx.drawImage(FOG, x * k, y * k, (size + 1) * k, (size + 1) * k);
@@ -2211,7 +2232,7 @@
     SFX.splat(); if (e.type !== 'verdugo') zvoice('death', e);
     S.decals.push({ x: e.x, y: e.y, r: e.r * rand(0.9, 1.5), rot: Math.random() * 3, a: 1 });
     if (S.decals.length > 140) S.decals.shift();
-    if (e.type !== 'cria' && e.type !== 'verdugo' && !e.popped) { S.corpses.push({ x: e.x, y: e.y, a: e.dir + (Math.random() < 0.5 ? 1.3 : -1.3), r: e.r, skin: e.skin, shirt: e.shirt, pants: e.pants, t: S.t }); if (S.corpses.length > (TOUCH ? 14 : 40)) S.corpses.shift(); }
+    if (e.type !== 'cria' && e.type !== 'verdugo' && !e.popped) { S.corpses.push({ x: e.x, y: e.y, a: e.dir + (Math.random() < 0.5 ? 1.3 : -1.3), r: e.r, skin: e.skin, shirt: e.shirt, pants: e.pants, t: S.t }); if (S.corpses.length > Math.min(TOUCH ? 14 : 40, QS.corpses)) S.corpses.shift(); }
     S.fx.push({ type: 'pop', x: e.x, y: e.y, r: e.r, life: 0.35, max: 0.35 });
     const r = Math.random(), big = e.type === 'boss' || e.type === 'brute' || e.type === 'blind';
     if (big || r < 0.18) S.drops.push({ x: e.x, y: e.y, kind: 'scrap', n: big ? 4 : 1 });
@@ -2429,7 +2450,10 @@
       const life = st.boom ? Math.max(60, Math.min(st.range, aimDist - 24)) / sp : st.range / sp;
       S.bullets.push({ x: mx, y: my, vx: Math.cos(sa) * sp, vy: Math.sin(sa) * sp, dmg: st.dmg, pierce: st.pierce, knock: st.knock, life, hit: [], boom: st.boom, heavy: st.heavy, fat: st.pellets > 1 });
     }
-    S.fx.push({ type: 'flash', x: mx, y: my, a, life: st.heavy ? 0.09 : 0.06, max: st.heavy ? 0.09 : 0.06, big: st.heavy, huge: id === 'shotgun' });
+    S.fx.push({ type: 'flash', x: mx, y: my, a, life: st.heavy ? 0.1 : 0.07, max: st.heavy ? 0.1 : 0.07, big: st.heavy, huge: id === 'shotgun', id, seed: Math.random() });
+    // hot sparks thrown from the muzzle, a little gas ring on the heavy ones
+    for (let i = 0, n = id === 'shotgun' ? 0 : st.heavy ? 5 : 2; i < n && S.parts.length < PCAP; i++) { const sa = a + rand(-0.5, 0.5), v = rand(180, 420); S.parts.push({ kind: 'spark', x: mx, y: my, vx: Math.cos(sa) * v, vy: Math.sin(sa) * v, life: rand(0.05, 0.14), max: 0.14, size: 2 }); }
+    if (st.heavy && !LOWFX) S.fx.push({ type: 'gasring', x: mx + Math.cos(a) * 6, y: my + Math.sin(a) * 6, a, life: 0.35, max: 0.35 });
     S.flashLight = st.heavy ? 0.12 : 0.07;
     if (!st.boom && S.casings.length < 120) S.casings.push({ x: p.x, y: p.y - 4, vx: -Math.cos(a) * 40 + rand(-30, 30), vy: rand(-90, -60), life: 0.5, red: id === 'shotgun' });
     const puffs = id === 'shotgun' ? 6 : st.heavy ? 3 : 1;
@@ -4134,7 +4158,9 @@
   $('optSfx').addEventListener('click', () => { toggleSfx(); buildOpts(); });
   $('optVib').addEventListener('click', () => { OPT.vib = !OPT.vib; saveOpts(); buzz(40); buildOpts(); });
   $('optPix').addEventListener('click', () => { PIX = !PIX; OPT.pixel = PIX; saveOpts(); ZC.clear(); resize(); buildOpts(); });
-  $('optFps').addEventListener('click', () => { OPT.fps = OPT.fps === 30 ? 45 : OPT.fps === 45 ? 60 : 30; saveOpts(); buildOpts(); });
+  const FPS_STEPS = TOUCH ? [30, 45, 60, 90, 120] : [30, 60, 90, 120];
+  $('optFps').addEventListener('click', () => { const i = FPS_STEPS.indexOf(OPT.fps); OPT.fps = FPS_STEPS[(i + 1) % FPS_STEPS.length]; saveOpts(); buildOpts(); });
+  $('optQual').addEventListener('click', () => { applyQuality({ alta: 'media', media: 'baja', baja: 'alta' }[OPT.quality]); buildOpts(); });
   $('optReset').addEventListener('click', () => {
     if (performance.now() - confirmReset > 3000) { confirmReset = performance.now(); $('optReset').querySelector('b').textContent = 'Toca otra vez para confirmar'; return; }
     confirmReset = 0; store.set('ne_run', null); Object.assign(META, JSON.parse(JSON.stringify(META_ZERO))); saveMeta();
@@ -4143,13 +4169,15 @@
   });
   $('pauseMenu').addEventListener('click', goMenu);
   $('overMenu').addEventListener('click', goMenu);
-  const FPS_LABEL = { 30: 'Ahorro de batería · 30 FPS', 45: 'Equilibrado · 45 FPS', 60: 'Fluido · 60 FPS' };
+  const FPS_LABEL = { 30: 'Ahorro · 30 FPS', 45: 'Equilibrado · 45 FPS', 60: 'Fluido · 60 FPS', 90: 'Muy fluido · 90 FPS', 120: 'Máximo · 120 FPS' };
+  const QUAL_LABEL = { alta: 'Alta', media: 'Media', baja: 'Baja' };
   function buildOpts() {
     $('optMusic').querySelector('b').textContent = AU.musicOn ? 'Sí' : 'No';
     $('optSfx').querySelector('b').textContent = AU.sfxOn ? 'Sí' : 'No';
     $('optVib').querySelector('b').textContent = OPT.vib ? 'Sí' : 'No';
     $('optFps').querySelector('b').textContent = FPS_LABEL[OPT.fps] || OPT.fps + ' FPS';
     $('optPix').querySelector('b').textContent = PIX ? 'Pixel art' : 'HD';
+    $('optQual').querySelector('b').textContent = QUAL_LABEL[OPT.quality];
     if (!confirmReset) $('optReset').querySelector('b').textContent = '';
   }
   function buildAch() {
@@ -4634,17 +4662,17 @@
 
   function zHead(e, x, y) { const sway = Math.sin(e.ph) * (e.type === 'runner' ? 2.5 : 1.5); return { hx: x + sway, hy: y - e.r * 0.78 }; }
   const ZC = new Map(), ZC_PH = 12, ZC_DIR = 16;
-  const zPlain = e => TOUCH && !e.big && !e.elite && e.type !== 'verdugo' && !(e.flash > 0) && !(e.brace > 0) && !(e.charge > 0) && e.type !== 'madre' && !e.hide && !e.feed && !e.lurk && !(e.rise > 0) && !(e.z > 0) && !(e.crouch > 0) && !(e.pounce > 0) && !(e.stun > 0) && !(e.squash > 0) && !(e.spit > 0) && !(e.fuse > 0) && !(e.scream > 0) && e.type !== 'crawler' && e.type !== 'bloater';
+  const zPlain = e => (TOUCH || PIX || QS !== QUAL.alta) && !e.big && !e.elite && e.type !== 'verdugo' && !(e.flash > 0) && !(e.brace > 0) && !(e.charge > 0) && e.type !== 'madre' && !e.hide && !e.feed && !e.lurk && !(e.rise > 0) && !(e.z > 0) && !(e.crouch > 0) && !(e.pounce > 0) && !(e.stun > 0) && !(e.squash > 0) && !(e.spit > 0) && !(e.fuse > 0) && !(e.scream > 0) && e.type !== 'crawler' && e.type !== 'bloater';
   function zSprite(e) {
-    const TAU = Math.PI * 2, pi = Math.floor(mod(e.ph, TAU) / TAU * ZC_PH) % ZC_PH, di = Math.round(mod(e.dir, TAU) / TAU * ZC_DIR) % ZC_DIR, sb = Math.floor((e.seed || 0) * 4) % 4;
+    const TAU = Math.PI * 2, pi = Math.floor(mod(e.ph, TAU) / TAU * ZC_PH) % ZC_PH, di = Math.round(mod(e.dir, TAU) / TAU * ZC_DIR) % ZC_DIR, NB = TOUCH && !PIX ? 4 : 8, sb = Math.floor((e.seed || 0) * NB) % NB;
     const f = Z * (PIX ? DPRP : DPR), key = `${e.type}|${pi}|${di}|${sb}|${LOWFX ? 1 : 0}|${f.toFixed(2)}`;
     let sp = ZC.get(key);
     if (sp) return sp;
-    if (ZC.size > 700) ZC.clear();
+    if (ZC.size > (TOUCH ? 700 : 1600)) ZC.clear();
     const w = Math.ceil(e.r * 5.2), h = Math.ceil(e.r * 5), c = document.createElement('canvas');
     c.width = Math.ceil(w * f); c.height = Math.ceil(h * f);
     const g = c.getContext('2d'); g.scale(f, f);
-    const fe = { ...e, ph: (pi + 0.5) / ZC_PH * TAU, dir: di / ZC_DIR * TAU, seed: (sb + 0.5) / 4, flash: 0 };
+    const fe = { ...e, ph: (pi + 0.5) / ZC_PH * TAU, dir: di / ZC_DIR * TAU, seed: (sb + 0.5) / NB, flash: 0 };
     const keep = ctx; ctx = g;
     try { drawZombieBody(fe, w / 2, h * 0.56); } finally { ctx = keep; }
     sp = { c, w, h, ox: w / 2, oy: h * 0.56 }; ZC.set(key, sp);
@@ -4869,6 +4897,56 @@
     }
     ctx.restore();
   }
+  // The muzzle flash, different for every gun and never twice the same:
+  // a layered tongue of fire (orange, yellow, white-hot core), side jets from the brake or
+  // compensator, thin star rays, and a warm bloom of light around it.
+  function drawMuzzle(f, x, y, k) {
+    const id = f.id || 'guard', sd = f.seed ?? 0.5, rnd = i => hash(Math.floor(sd * 9973) + i, 7);
+    const sc = (id === 'shotgun' ? 1.9 : id === 'deagle' ? 1.45 : id === 'launcher' ? 1.2 : id === 'ak' ? 1.1 : 1) * (0.85 + rnd(0) * 0.3);
+    const grow = k > 0.6 ? 1 : 0.55 + k * 0.75, L = 16 * sc * grow, Wd = 4.2 * sc * (0.7 + k * 0.5);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(f.a);
+    ctx.globalCompositeOperation = 'lighter';
+    stamp(ctx, ST_WARM, L * 0.4, 0, (26 + L) * (0.6 + k * 0.6), 1);
+    if (!LOWFX) stamp(ctx, ST_BULB, L * 0.3, 0, (18 + L * 0.7), 0.9 * k);
+    const tongue = (len, w, col, jag) => {
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, -w * 0.6);
+      const n = 5;
+      for (let i = 1; i <= n; i++) { const q = i / n, wob = (rnd(i + jag * 10) - 0.5) * w * 0.9 * q; ctx.lineTo(len * q, -w * (1 - q * 0.85) + wob); }
+      ctx.lineTo(len * (1.05 + rnd(jag) * 0.2), (rnd(jag + 3) - 0.5) * w * 0.6);
+      for (let i = n; i >= 1; i--) { const q = i / n, wob = (rnd(i + jag * 10 + 5) - 0.5) * w * 0.9 * q; ctx.lineTo(len * q, w * (1 - q * 0.85) + wob); }
+      ctx.lineTo(0, w * 0.6); ctx.closePath(); ctx.fill();
+    };
+    if (id === 'launcher') {
+      // a soft thump of flame out front and the back-blast behind the tube
+      tongue(L * 0.7, Wd * 1.3, 'rgba(255,140,50,.75)', 1); tongue(L * 0.45, Wd * 0.8, 'rgba(255,230,160,.9)', 2);
+      ctx.save(); ctx.rotate(Math.PI); tongue(L * 1.4, Wd * 1.6, 'rgba(255,120,40,.55)', 3); tongue(L * 0.8, Wd, 'rgba(255,200,120,.7)', 4); ctx.restore();
+    } else if (id === 'shotgun') {
+      // a wide fan of fire and burning powder
+      for (let i = -2; i <= 2; i++) { ctx.save(); ctx.rotate(i * 0.16 + (rnd(i + 20) - 0.5) * 0.1); tongue(L * (0.75 + rnd(i + 30) * 0.4), Wd * 0.75, i ? 'rgba(255,130,40,.7)' : 'rgba(255,160,60,.85)', i + 5); ctx.restore(); }
+      tongue(L * 0.65, Wd * 1.1, 'rgba(255,225,140,.9)', 11); tongue(L * 0.32, Wd * 0.7, 'rgba(255,255,235,1)', 12);
+      ctx.fillStyle = 'rgba(255,200,110,.9)'; for (let i = 0; i < 9; i++) { const a2 = (rnd(i + 40) - 0.5) * 0.9, d = L * (0.5 + rnd(i + 50) * 1.1); ctx.fillRect(Math.cos(a2) * d, Math.sin(a2) * d, 1.6, 1.6); }
+    } else {
+      tongue(L, Wd, 'rgba(255,120,30,.75)', 1);
+      tongue(L * 0.72, Wd * 0.72, 'rgba(255,200,80,.9)', 2);
+      tongue(L * 0.4, Wd * 0.45, 'rgba(255,255,230,1)', 3);
+      // side jets: the Thompson's Cutts compensator throws them up, the AK's slant brake off to one side, the Deagle a wide ring
+      ctx.fillStyle = 'rgba(255,170,70,.8)';
+      const jet = (ax, ay, len, w) => { const nx = -ay, ny = ax; ctx.beginPath(); ctx.moveTo(L * 0.18 + nx * w, ny * w); ctx.lineTo(L * 0.18 + ax * len, ay * len); ctx.lineTo(L * 0.18 - nx * w, -ny * w); ctx.fill(); };
+      if (id === 'mp5') { jet(0.25, -0.97, Wd * 2.2 * (0.8 + rnd(60) * 0.4), Wd * 0.4); jet(0.45, -0.89, Wd * 1.6, Wd * 0.3); }
+      else if (id === 'ak') { jet(0.3, 0.95, Wd * 2.4, Wd * 0.4); jet(0.3, -0.95, Wd * 1.4, Wd * 0.3); }
+      else if (id === 'deagle') { jet(0.1, -1, Wd * 1.8, Wd * 0.5); jet(0.1, 1, Wd * 1.8, Wd * 0.5); ctx.strokeStyle = `rgba(255,220,150,${0.6 * k})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(L * 0.2, 0, Wd * 0.8, Wd * 2.2, 0, 0, 7); ctx.stroke(); }
+      else { jet(0.2, -0.98, Wd * 1.3, Wd * 0.3); jet(0.2, 0.98, Wd * 1.3, Wd * 0.3); }
+    }
+    // thin star rays that flicker for a single frame
+    if (k > 0.45 && !LOWFX) {
+      ctx.strokeStyle = 'rgba(255,240,200,.75)'; ctx.lineWidth = 1; ctx.beginPath();
+      for (let i = 0; i < 4; i++) { const a2 = (rnd(i + 70) - 0.5) * 2.4, d = L * (0.8 + rnd(i + 80) * 0.9); ctx.moveTo(L * 0.15, 0); ctx.lineTo(L * 0.15 + Math.cos(a2) * d, Math.sin(a2) * d); }
+      ctx.stroke();
+    }
+    // the white-hot point at the muzzle
+    ctx.fillStyle = `rgba(255,255,245,${0.6 + 0.4 * k})`; ctx.beginPath(); ctx.arc(1, 0, 1.8 * sc, 0, 7); ctx.fill();
+    ctx.restore();
+  }
   function drawZone(z, x, y) {
     ctx.fillStyle = 'rgba(70, 64, 60, .45)'; ctx.fillRect(x - z.r * 0.7, y - z.r * 0.55, z.r * 1.4, z.r * 1.1);
     ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 1;
@@ -5087,7 +5165,7 @@
     const p = S.p;
     if ((S.critT -= dt) <= 0) {
       S.critT = rand(7, 16);
-      if (S.critters.length < 4 && !LOWFX && S.seq.phase === 'done') {
+      if (S.critters.length < 4 && !LOWFX && QS.critters && S.seq.phase === 'done') {
         const deer = Math.random() < 0.18, a = Math.random() * 6.28, d = deer ? rand(420, 560) : rand(260, 420);
         const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
         if (!insideBase(x, y, 100) && !(deer && onRoad(x, y, 40))) S.critters.push(deer ? { kind: 'deer', x, y, vx: 0, vy: 0, ph: 0, st: 'graze', face: Math.random() < 0.5 ? -1 : 1, ant: Math.random() < 0.5, life: 30 } : { kind: 'rat', x, y, a: a + Math.PI + rand(-0.8, 0.8), sp: rand(150, 230), ph: 0, life: rand(2.5, 4) });
@@ -5457,8 +5535,8 @@
     for (let cx = Math.floor(camX / CH); cx <= Math.floor((camX + VW) / CH); cx++)
       for (let cy = Math.floor(camY / CH); cy <= Math.floor((camY + VH) / CH); cy++)
         ctx.drawImage(getChunk(cx, cy), cx * CH - camX, cy * CH - camY);
-    if (!TOUCH) drawCloudShadows(t);
-    if (!LOWFX) drawGrassSway(t);
+    if (!TOUCH && QS.clouds) drawCloudShadows(t);
+    if (!LOWFX && QS.grass) drawGrassSway(t);
 
     const camps = campsNear(p.x, p.y, Math.max(VW, VH) * 0.6 + 260);
     const bushes = [];
@@ -5594,7 +5672,7 @@
         const behind = p.y < tr.y && p.y > tr.y - 175 * s && Math.abs(p.x - tr.x) < 60 * s;
         if (behind) ctx.globalAlpha = 0.4;
         const gust = S.windT > 0 ? 1 : 0;
-        if (!TOUCH || gust) {
+        if ((!TOUCH && QS.sway) || gust) {
           // the crown sways; the trunk stays put
           const sh = (Math.sin(t * 1.1 + tr.x * 0.011 + tr.y * 0.007) * 0.012 + Math.sin(t * 2.3 + tr.x * 0.03) * 0.005) * (1 + gust * 2.5) + gust * Math.cos(S.windA) * 0.03;
           ctx.drawImage(spr.c, 0, 118, 160, 72, x - 80 * s, y - 64 * s, 160 * s, 72 * s);
@@ -5645,15 +5723,15 @@
     if (baseOn) fogHoles.push([BASE_FIRE.x - camX, BASE_FIRE.y - 20 - camY, 240 * fireFlicker(BASE_FIRE, t)]);
     fogHoles.push([p.x - camX, p.y - 6 - camY, 170]);
     for (const f of feats) if (f.light && lampOn(f, t)) fogHoles.push([f.light.x - camX, f.light.y - camY, 150]);
-    const fogOn = !TOUCH || QL[QI].fog;
+    const fogOn = QS.fog > 0 && (!TOUCH || QL[QI].fog), fogLite = TOUCH || QS.fog < 2;
     if (fogOn) {
-      if (!TOUCH || !FOGC.cam || (FOGC.n = (FOGC.n + 1) % 3) === 0) { buildFog(t, fogHoles); FOGC.cam = [camX, camY]; }
-      const fdx = TOUCH ? (FOGC.cam[0] - camX) * Z : 0, fdy = TOUCH ? (FOGC.cam[1] - camY) * Z : 0;
-      ctx.globalAlpha = 0.4; if (TOUCH) ctx.drawImage(fogC, fdx - 4, fdy - 4, W + 8, H + 8); else ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1;
+      if (!fogLite || !FOGC.cam || (FOGC.n = (FOGC.n + 1) % 3) === 0) { buildFog(t, fogHoles); FOGC.cam = [camX, camY]; }
+      const fdx = fogLite ? (FOGC.cam[0] - camX) * Z : 0, fdy = fogLite ? (FOGC.cam[1] - camY) * Z : 0;
+      ctx.globalAlpha = 0.4; if (fogLite) ctx.drawImage(fogC, fdx - 4, fdy - 4, W + 8, H + 8); else ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1;
     }
 
     drawLighting(camps, t, feats);
-    if (!TOUCH) { ctx.globalAlpha = 0.07; ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1; }
+    if (!TOUCH && QS.fog > 1) { ctx.globalAlpha = 0.07; ctx.drawImage(fogC, 0, 0, W, H); ctx.globalAlpha = 1; }
     if (S.bolt > 0.3 || (S.bolt > 0.12 && S.bolt < 0.2)) { ctx.fillStyle = 'rgba(200,210,255,.07)'; ctx.fillRect(0, 0, W, H); }
 
     // glowing things on top of the darkness
@@ -5886,13 +5964,10 @@
     ctx.globalAlpha = 1;
     for (const f of S.fx) {
       const k = f.life / f.max, x = f.x - camX, y = f.y - camY;
-      if (f.type === 'flash') {
-        ctx.save(); ctx.translate(x, y); ctx.rotate(f.a);
-        const L = f.huge ? 38 : f.big ? 22 : 12, Wd = f.huge ? 11 : 4;
-        ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.moveTo(0, -Wd); ctx.lineTo(L, 0); ctx.lineTo(0, Wd); ctx.fill();
-        if (f.huge) { ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(L * 0.6, -Wd * 1.4); ctx.lineTo(4, 0); ctx.lineTo(L * 0.6, Wd * 1.4); ctx.lineTo(0, 3); ctx.fill(); }
-        ctx.fillStyle = 'rgba(255,190,80,.6)'; ctx.beginPath(); ctx.arc(2, 0, f.huge ? 15 : f.big ? 9 : 5, 0, 7); ctx.fill();
-        ctx.restore();
+      if (f.type === 'flash') drawMuzzle(f, x, y, k);
+      else if (f.type === 'gasring') {
+        const q = 1 - k; ctx.strokeStyle = `rgba(210,200,185,${0.35 * k})`; ctx.lineWidth = 2.5 * k + 0.5;
+        ctx.beginPath(); ctx.ellipse(x + Math.cos(f.a) * q * 18, y + Math.sin(f.a) * q * 18, 4 + q * 16, 3 + q * 10, f.a, 0, 7); ctx.stroke();
       } else if (f.type === 'slash') {
         ctx.strokeStyle = `rgba(230,235,245,${k})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(S.p.x - camX, S.p.y - 4 - camY, 30, f.a - 0.9 * (1.4 - k), f.a + 0.9 * (1.4 - k)); ctx.stroke();
       } else if (f.type === 'ring') {
@@ -5930,11 +6005,11 @@
 
     // screen space
     if (PIX) { ctx = mctx; pixBlit(); }
-    if (!TOUCH) {
+    if (!TOUCH && QS.post) {
       // cool shadows, warm centre, and film grain (not over pixel art)
       if (!POST.grade || POST.w !== W || POST.h !== H) buildPost();
       ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = POST.grade; ctx.fillRect(0, 0, W, H); ctx.restore();
-      if (!PIX) { ctx.save(); ctx.globalAlpha = 0.045; ctx.translate(-Math.random() * 256, -Math.random() * 256); ctx.fillStyle = POST.grain; ctx.fillRect(0, 0, W + 256, H + 256); ctx.restore(); }
+      if (!PIX && QS.grain) { ctx.save(); ctx.globalAlpha = 0.045; ctx.translate(-Math.random() * 256, -Math.random() * 256); ctx.fillStyle = POST.grain; ctx.fillRect(0, 0, W + 256, H + 256); ctx.restore(); }
     }
     { const hk = p.hp / p.maxHp, a = (hk < 0.35 ? (0.35 - hk) / 0.35 * (0.55 + 0.45 * Math.sin(S.t * 7)) : 0) + S.hurtFlash * 2.2;
       if (a > 0.02) { if (!POST.red || POST.w !== W || POST.h !== H) buildPost(); ctx.globalAlpha = Math.min(1, a); ctx.drawImage(POST.red, 0, 0, W, H); ctx.globalAlpha = 1; } }
@@ -6397,7 +6472,8 @@
     const cap = TOUCH && QL[QI].fps ? Math.min(OPT.fps, QL[QI].fps) : OPT.fps;
     const iv = 1000 / (still ? 15 : S.state === 'menu' && TOUCH ? 30 : cap);
     acc += fd;
-    if (acc < iv - 2) return;
+    // a little slack so a screen that refreshes right at the cap is never skipped
+    if (acc < iv - Math.min(2, iv * 0.15)) return;
     acc = Math.min(Math.max(0, acc - iv), iv);
     let dt = Math.min(0.05, (t - last) / 1000);
     last = t;
