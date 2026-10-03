@@ -225,6 +225,27 @@
   body.touch .mbtn { font-size: 17px; padding: 3px 10px 4px; }
   body.touch .mbtn small { font-size: 9.5px; }
   body.touch .menubox .tag { font-size: 10px; line-height: 1.4; }
+  /* phones in landscape: every window fits on one screen, no scrolling to reach the buttons */
+  body.touch .overlay { padding: calc(env(safe-area-inset-top, 0px) + 8px) 14px calc(env(safe-area-inset-bottom, 0px) + 8px); place-items: center; }
+  body.touch .box { gap: 8px; }
+  body.touch .box h1 { font-size: 44px; }
+  body.touch .box h2 { font-size: 28px; }
+  body.touch .box p { font-size: 11px; line-height: 1.45; }
+  body.touch .btn { font-size: 20px; padding: 5px 24px 7px; box-shadow: 0 3px 0 #7a5a1f; }
+  body.touch #opts .box { width: min(640px, 100%); }
+  body.touch .optlist { grid-template-columns: 1fr 1fr; gap: 6px; }
+  body.touch .opt { padding: 7px 10px; font-size: 11px; }
+  body.touch .opt b { font-size: 10px; }
+  body.touch .ctrlhelp { font-size: 9px; line-height: 1.45; }
+  body.touch #camp .box { width: min(760px, 100%); }
+  body.touch .camplines { font-size: 10px; gap: 3px; }
+  body.touch .shop { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  body.touch .buy { padding: 5px 8px; gap: 0; }
+  body.touch .buy .who { font-size: 8px; }
+  body.touch .buy .t { font-size: 11px; }
+  body.touch .buy .d { font-size: 9px; line-height: 1.3; }
+  body.touch .buy .c { font-size: 9px; margin-top: 2px; }
+  body.touch .perks { gap: 6px; }
   body.touch .perkc { padding: 10px 8px; }
   body.touch .perkc .pi { width: 34px; height: 34px; font-size: 18px; }
   body.touch .xpline { margin: -2px auto 0; width: 46vw; }
@@ -241,17 +262,29 @@
   body.touch .timer { font-size: 18px; }
   body.touch .snd { margin-top: 2px; gap: 4px; }
   body.touch .snd button { font-size: 7px; padding: 2px 4px; }
-  body.touch .hotbar { left: auto; right: 12px; transform: none; top: calc(env(safe-area-inset-top, 0px) + 50px); bottom: auto; width: auto; grid-template-columns: repeat(5, 38px); gap: 3px; }
-  body.touch .slot { padding: 2px 1px 3px; border-radius: 2px; }
+  body.touch .hotbar { left: 50%; right: auto; transform: translateX(-50%); top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); width: auto; grid-template-columns: repeat(5, 52px); gap: 4px; }
+  body.touch .slot { padding: 3px 2px 4px; border-radius: 3px; }
   body.touch .slot .nm, body.touch .slot .st, body.touch .slot .k { display: none; }
-  body.touch .slot canvas { width: 32px; height: 14px; }
-  body.touch .slot .am { font-size: 7px; }
+  body.touch .slot canvas { width: 42px; height: 18px; }
+  body.touch .slot .am { font-size: 8px; }
+  /* touch actions: roll, reload, knife on the right edge; pause next to the sound buttons */
+  .tacts { display: none; }
+  body.touch .tacts { display: flex; position: fixed; right: calc(env(safe-area-inset-right, 0px) + 10px); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); flex-direction: column-reverse; gap: 8px; align-items: center; transition: opacity .6s ease; }
+  body.intro .tacts { opacity: 0; pointer-events: none; }
+  .tact { width: 42px; height: 42px; border-radius: 50%; border: 1.5px solid rgba(233,185,73,.55); background: rgba(14,11,16,.55); color: var(--ink); font: 700 8px var(--mono); letter-spacing: .04em; display: grid; place-items: center; padding: 0; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  .tact b { display: block; font-size: 16px; line-height: 1; font-family: var(--display); font-weight: 400; color: var(--gold); }
+  .tact.big { width: 58px; height: 58px; border-color: rgba(233,185,73,.8); }
+  .tact.big b { font-size: 22px; }
+  .tact:active, .tact.on { background: rgba(233,185,73,.35); transform: scale(.94); }
+  .tact.cd { opacity: .4; }
+  .pausebtn { display: none; }
+  body.touch .pausebtn { display: inline-block; }
   body.touch .slot.locked { opacity: .45; }
-  body.touch .radio { top: calc(env(safe-area-inset-top, 0px) + 40px); bottom: auto; width: min(320px, 42vw); padding: 5px 9px 6px; }
+  body.touch .radio { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 66px); width: min(360px, 44vw); padding: 5px 9px 6px; background: rgba(10,9,14,.78); }
   body.touch .radio .rh { font-size: 7px; }
   body.touch .radio .skip { display: none; }
   body.touch .radio p { font-size: 10px; line-height: 1.35; min-height: 0; margin-top: 3px; }
-  body.touch .toast, body.touch .note { top: calc(env(safe-area-inset-top, 0px) + 40px); width: min(300px, 42vw); padding: 6px 9px; grid-template-columns: 26px 1fr; gap: 6px; }
+  body.touch .toast, body.touch .note { top: calc(env(safe-area-inset-top, 0px) + 74px); width: min(300px, 40vw); padding: 6px 9px; grid-template-columns: 26px 1fr; gap: 6px; }
   body.touch .toast .ico { width: 26px; height: 26px; font-size: 15px; }
   body.touch .toast .t { font-size: 10px; }
   body.touch .toast .d { font-size: 9px; }
@@ -282,12 +315,18 @@
       <div class="snd">
         <button type="button" id="musicBtn" aria-pressed="true">Música</button>
         <button type="button" id="sfxBtn" aria-pressed="true">Efectos</button>
+        <button type="button" id="pauseBtn" class="pausebtn" aria-label="Pausa">❚❚</button>
       </div>
     </div>
   </div>
 </div>
 
 <div class="hotbar" id="hotbar"></div>
+<div class="tacts" id="tacts">
+  <button type="button" class="tact big" id="tRoll" aria-label="Rodar"><span><b>⟲</b>RODAR</span></button>
+  <button type="button" class="tact" id="tReload" aria-label="Recargar"><span><b>↻</b>REC.</span></button>
+  <button type="button" class="tact" id="tKnife" aria-label="Cuchillo"><span><b>†</b>CUCH.</span></button>
+</div>
 
 <div class="toast" id="toast" hidden>
   <span class="ico" id="toastIco">?</span>
@@ -350,7 +389,7 @@
       <button class="opt" id="optPix" type="button">Estilo <b></b></button>
       <button class="opt warn" id="optReset" type="button">Borrar progreso y logros <b></b></button>
     </div>
-    <div class="ctrlhelp"><b>PC:</b> WASD moverse · Shift correr · ratón apuntar · clic disparar · clic derecho o V cuchillo · R recargar · 1–5 armas · P pausa.<br><b>Celular:</b> mitad izquierda para moverte (empuja hasta el borde para correr) · mitad derecha para apuntar y disparar · el cuchillo sale solo.</div>
+    <div class="ctrlhelp"><b>PC:</b> WASD moverse · Shift correr · ratón apuntar · clic disparar · clic derecho o V cuchillo · R recargar · 1–5 armas · P pausa.<br><b>Celular:</b> mitad izquierda para moverte (empuja hasta el borde para correr) · mitad derecha para apuntar y disparar · botones a la derecha: rodar, recargar y cuchillo · ❚❚ arriba para pausar · toca un arma abajo para cambiarla.</div>
     <button class="btn" id="optBack" type="button">Volver</button>
   </div>
 </div>
@@ -380,6 +419,7 @@
   <div class="box">
     <h2>Pausa</h2>
     <button class="btn" id="resumeBtn" type="button">Seguir</button>
+    <button class="btn ghost" id="pauseOpts" type="button">Opciones</button>
     <button class="btn ghost" id="pauseMenu" type="button">Menú principal</button>
   </div>
 </div>
@@ -488,8 +528,8 @@
   // play we measure the real frame rate and step down (resolution, fog, detail, 30 FPS)
   // when it falls short, or back up when there is room. The level is remembered.
   const QL = [
-    { rs: Math.min(1.6, Math.max(1, window.devicePixelRatio || 1)), fog: true, fx: true, pc: 110 },   // HD
-    { rs: 1.2, fog: true, fx: true, pc: 100 },
+    { rs: Math.min(2.4, Math.max(1, window.devicePixelRatio || 1)), fog: true, fx: true, pc: 110 },   // HD, near the screen's own density
+    { rs: Math.min(1.7, Math.max(1, window.devicePixelRatio || 1)), fog: true, fx: true, pc: 100 },
     { rs: 0.95, fog: true, fx: true, pc: 90 },
     { rs: 0.75, fog: true, fx: true, pc: 70 },
     { rs: 0.62, fog: false, fx: false, pc: 50 },
@@ -558,7 +598,7 @@
   function resize() {
     // in pixel art the laptop draws at the screen's own density, so each art pixel is a whole number of screen pixels
     const dev = window.devicePixelRatio || 1;
-    const dpr = TOUCH ? QL[QI].rs : QS.res <= 1 ? 1 : PIX ? dev : Math.min(QS.res, Math.max(QS.res >= 2 ? 1.35 : 1, dev));
+    const dpr = TOUCH ? (PIX ? Math.min(3, dev) : QL[QI].rs) : QS.res <= 1 ? 1 : PIX ? dev : Math.min(QS.res, Math.max(QS.res >= 2 ? 1.35 : 1, dev));
     LS = TOUCH ? 4 : QS.ls;
     DPR = dpr;
     W = window.innerWidth; H = window.innerHeight;
@@ -568,9 +608,11 @@
     // a close camera keeps the view tight; phones in landscape get a little more room
     Z = Math.min(W, H) < 500 ? 1.1 : W < 720 ? 1.35 : 1.7;
     VW = W / Z; VH = H / Z;
-    PK = Math.max(1, Math.round(dpr * Z)); DPRP = dpr / PK;
+    // phones: finer art pixels at the top quality; each automatic step down makes them a little coarser (and cheaper)
+    PK = Math.max(1, Math.round(dpr * Z * (TOUCH ? [0.55, 0.68, 0.8, 0.95, 1.05, 1.2][QI] : 1))); DPRP = dpr / PK;
     pixC.width = Math.ceil(W * DPRP) + 1; pixC.height = Math.ceil(H * DPRP) + 1;
     cvs.style.imageRendering = PIX ? 'pixelated' : 'auto';
+    document.body.classList.toggle('pix', PIX);
     light.width = Math.max(1, Math.ceil(W / LS)); light.height = Math.max(1, Math.ceil(H / LS));
     fogC.width = light.width; fogC.height = light.height;
   }
@@ -1083,6 +1125,11 @@
   const stick = { on: false, id: null, sx: 0, sy: 0, x: 0, y: 0 };
   const aimStick = { on: false, id: null, sx: 0, sy: 0, x: 0, y: 0 };
   cvs.addEventListener('contextmenu', e => e.preventDefault());
+  const tAct = (id, fn) => { const b = $(id); if (!b) return; b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (S && S.state === 'play') { fn(); buzz(15); } }); b.addEventListener('contextmenu', e => e.preventDefault()); };
+  tAct('tRoll', () => { input.roll = true; });
+  tAct('tReload', () => startReload());
+  tAct('tKnife', () => { input.knife = true; });
+  $('pauseBtn').addEventListener('click', e => { e.stopPropagation(); if (S && (S.state === 'play' || S.state === 'pause')) togglePause(); });
   cvs.addEventListener('pointerdown', e => {
     if (S && S.state === 'play' && S.seq.phase === 'fire') { if (S.seq.t > 1.5) skipFireIntro(); return; }
     if (S && S.state === 'play' && S.seq.phase === 'verdugo') { if (S.seq.t > 3) endVerdIntro(); return; }
@@ -4161,8 +4208,10 @@
   $('continueBtn').addEventListener('click', () => { audioInit(); const r = loadRun(); if (!r) return; RUN = r; startNight(); });
   $('achBtn').addEventListener('click', () => { buildAch(); $('start').hidden = true; $('ach').hidden = false; });
   $('achBack').addEventListener('click', () => { $('ach').hidden = true; $('start').hidden = false; });
-  $('optBtn').addEventListener('click', () => { buildOpts(); $('start').hidden = true; $('opts').hidden = false; });
-  $('optBack').addEventListener('click', () => { $('opts').hidden = true; $('start').hidden = false; refreshMenu(); });
+  let optsFromPause = false;
+  $('optBtn').addEventListener('click', () => { optsFromPause = false; $('optReset').hidden = false; buildOpts(); $('start').hidden = true; $('opts').hidden = false; });
+  $('pauseOpts').addEventListener('click', () => { optsFromPause = true; $('optReset').hidden = true; buildOpts(); $('pause').hidden = true; $('opts').hidden = false; });
+  $('optBack').addEventListener('click', () => { $('opts').hidden = true; if (optsFromPause) { optsFromPause = false; $('pause').hidden = false; } else { $('start').hidden = false; refreshMenu(); } });
   $('optMusic').addEventListener('click', () => { toggleMusic(); buildOpts(); });
   $('optSfx').addEventListener('click', () => { toggleSfx(); buildOpts(); });
   $('optVib').addEventListener('click', () => { OPT.vib = !OPT.vib; saveOpts(); buzz(40); buildOpts(); });
@@ -6501,7 +6550,7 @@
         musicTick();
         if (toastLife > 0 && (toastLife -= dt) <= 0) $('toast').hidden = true;
         if (noteLife > 0 && (noteLife -= dt) <= 0) $('note').hidden = true;
-        if ((hudT -= dt) <= 0) { hudT = 0.1; updateHud(); }
+        if ((hudT -= dt) <= 0) { hudT = 0.1; updateHud(); if (TOUCH) $('tRoll').classList.toggle('cd', S.p.rollCd > 0 || S.p.stam < 18); }
       }
       render();
     }
