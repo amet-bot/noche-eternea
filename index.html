@@ -3431,11 +3431,13 @@
   // and a roar that calls the dead. At 30% he goes into a rage.
   // ======================================================================
   function meetVerdugo(c) {
-    S.enemies = S.enemies.filter(o => Math.hypot(o.x - c.x, o.y - c.y) > 650);
-    if (!RUN.verdSeen) {
+    // clear the clearing (marked dead, never a new array: this runs in the middle of the enemy update)
+    for (const o of S.enemies) if (Math.hypot(o.x - c.x, o.y - c.y) < 650) o.dead = true;
+    // his entrance plays every time you reach him (it can be skipped after 3 s)
+    {
       S.seq = { phase: 'verdugo', t: 0, f: {}, c }; input.fire = false; input.roll = false; S.bullets = []; S.eshots = [];
       clearRadio(); document.body.classList.add('intro'); setMusicGain(AU.musicOn ? 0.1 : 0, 0.6);
-    } else spawnVerdugo(c);
+    }
   }
   function endVerdIntro() {
     if (!S || S.seq.phase !== 'verdugo') return;
