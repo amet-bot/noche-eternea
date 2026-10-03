@@ -2696,7 +2696,7 @@
     banner('¡HORDA!'); SFX.siren(); SFX.roar();
     radio('¡Horda! Aguanta 20 segundos… o corre a una fogata si te superan.');
     const base = Math.random() * 6.28;
-    for (let g = 0; g < 3; g++) for (let i = 0; i < 2 + S.night; i++) { const e = spawnEnemy(pickType(true), undefined, undefined, undefined, base + g * 2.1 + rand(-0.3, 0.3)); e.state = 'chase'; }
+    for (let g = 0; g < 3; g++) for (let i = 0; i < 3 + S.night * 1.4; i++) { const e = spawnEnemy(pickType(true), undefined, undefined, undefined, base + g * 2.1 + rand(-0.3, 0.3)); e.state = 'chase'; }
     if (S.night >= 3 && !S.bossDone) { S.bossDone = true; const e = spawnEnemy('boss'); e.state = 'chase'; }
   }
   function endHorde() {
@@ -2829,7 +2829,7 @@
     if (S.horde) {
       S.hordeLeft -= dt;
       S.threat = Math.max(0, S.hordeLeft / 22 * 100);
-      if ((S.hordeT -= dt) <= 0 && !safe) { S.hordeT = 2.0; for (let i = 0, n = E.length > (TOUCH ? 95 : 170) ? 0 : 1 + Math.floor(S.night * 0.6); i < n; i++) { const e = spawnEnemy(pickType(true)); e.state = 'chase'; } }
+      if ((S.hordeT -= dt) <= 0 && !safe) { S.hordeT = 2.0; for (let i = 0, n = E.length > (TOUCH ? 95 : 210) ? 0 : 2 + Math.floor(S.night * 0.8); i < n; i++) { const e = spawnEnemy(pickType(true)); e.state = 'chase'; } }
       if (S.hordeLeft <= 0) endHorde();
     }
     // the road is never empty: most come straight at you
@@ -2842,10 +2842,10 @@
       if (pStep === 2) radio('No te quedes quieto. Cada minuto que pasa hay más de ellos. Muévete rápido.');
       if (pStep >= 3) S.shake = Math.max(S.shake, 4);
     }
-    const target = inBase ? 3 : Math.round((10 + S.night * 6) * warm * (1 + press * (0.5 + S.night * 0.12)) * (S.boss ? 0.4 : 1) * (S.obj === 'return' ? 1.2 : 1) * (TOUCH ? 0.72 : 1));
+    const target = inBase ? 3 : Math.round((14 + S.night * 8.5) * warm * (1 + press * (0.5 + S.night * 0.12)) * (S.boss ? 0.4 : 1) * (S.obj === 'return' ? 1.2 : 1) * (TOUCH ? 0.72 : 1));
     if (live && (S.popT -= dt) <= 0) {
       S.popT = 1.0 / (1 + press * 1.2);
-      if (E.length < target && E.length < (TOUCH ? 75 : 140)) {
+      if (E.length < target && E.length < (TOUCH ? 75 : 180)) {
         const a = Math.random() * 6.28, n = 1 + Math.floor(Math.random() * 3);
         for (let i = 0; i < n; i++) { const e = spawnEnemy(pickType(false), undefined, undefined, undefined, a + rand(-0.4, 0.4)); if (Math.random() < 0.35) { e.state = 'wander'; placeAtEdge(e, a + rand(-0.4, 0.4), rand(150, 400)); } }
       }
