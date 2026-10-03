@@ -945,21 +945,29 @@
 
   const cents = (f, c) => f * Math.pow(2, c / 1200);
   // ---------- Action score ----------
-  // A survival-horror score, 96 bpm in D minor with a Phrygian edge (Dm Bb Eb A):
-  // a low string ostinato, war drums in 3+3+2, a ticking clock and cold high strings.
-  // Calm, it is a heartbeat and a drone; when the horde comes, brass and a braam join in.
+  // A gothic, driving loop in the spirit of the old castle games: 148 bpm in A minor (Am F G E),
+  // octave bass that never stops, a harpsichord running sixteenth-note arpeggios, a full kit and a lead
+  // you can hum. Calm in camp (arpeggio and organ only); the lead joins as the danger grows; in a horde
+  // everything doubles: sixteenth hats, the lead an octave up, crashes.
   function musicStart() {
     if (!AU.C || AU.musicReady) return;
     AU.musicReady = true;
     AU.nextNote = now() + 0.2; AU.step = 0;
   }
-  const STEP = 60 / 96 / 4;
-  const PROG = [{ root: 38, ch: [62, 65, 69] }, { root: 34, ch: [62, 65, 70] }, { root: 39, ch: [63, 67, 70] }, { root: 45, ch: [61, 64, 69] }];
-  // semitone offsets over the root for the sixteenths of the ostinato (1 = the menacing flat second)
-  const OST = [0, 0, 12, 0, 0, 1, 0, 12, 0, 0, 12, 0, 3, 1, 0, -2];
-  const OSTA = [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0];
-  // a slow horn motif, one or two notes a bar
-  const HORN = [[[0, 62, 12], [12, 63, 4]], [[0, 62, 16]], [[0, 67, 8], [8, 65, 8]], [[0, 64, 16]], [[0, 69, 12], [12, 70, 4]], [[0, 69, 16]], [[0, 67, 8], [8, 63, 8]], [[0, 61, 16]]];
+  const STEP = 60 / 148 / 4;
+  const PROG = [{ root: 45, ch: [57, 60, 64] }, { root: 41, ch: [53, 57, 60] }, { root: 43, ch: [55, 59, 62] }, { root: 40, ch: [56, 59, 64] }];
+  // eight bars of lead: [step, note, length in sixteenths]
+  const LEAD = [
+    [[0, 69, 2], [2, 72, 2], [4, 76, 2], [6, 81, 2], [8, 79, 2], [10, 76, 2], [12, 72, 2], [14, 76, 2]],
+    [[0, 77, 2], [2, 81, 2], [4, 84, 2], [6, 81, 2], [8, 79, 2], [10, 77, 2], [12, 76, 2], [14, 77, 2]],
+    [[0, 79, 3], [3, 74, 1], [4, 79, 2], [6, 83, 3], [9, 81, 1], [10, 79, 2], [12, 74, 4]],
+    [[0, 80, 3], [3, 83, 1], [4, 83, 2], [6, 88, 3], [9, 86, 1], [10, 83, 2], [12, 80, 4]],
+    [[0, 81, 2], [2, 84, 2], [4, 88, 3], [7, 86, 1], [8, 84, 2], [10, 81, 2], [12, 76, 4]],
+    [[0, 77, 2], [2, 81, 2], [4, 84, 2], [6, 89, 2], [8, 88, 2], [10, 84, 2], [12, 81, 4]],
+    [[0, 83, 2], [2, 86, 2], [4, 91, 3], [7, 89, 1], [8, 86, 2], [10, 83, 2], [12, 79, 4]],
+    [[0, 80, 2], [2, 83, 2], [4, 86, 2], [6, 88, 2], [8, 88, 4], [12, 80, 2], [14, 83, 2]],
+  ];
+  const ARP = [0, 1, 2, 3, 4, 5, 4, 3, 0, 1, 2, 3, 4, 5, 6, 5];
   function musicTick() {
     if (!AU.C || !AU.musicReady || !S || S.state !== 'play') return;
     const C = AU.C;
@@ -969,37 +977,29 @@
   function playStep(step, t) {
     if (AU.bossOn) return;
     const I = AU.intensity, s = step % 16, barN = Math.floor(step / 16), bar = barN % 4, ch = PROG[bar], M = AU.music, BAR = STEP * 16;
-    const hot = S.horde || !!S.boss, calm = S.seq.phase === 'prep' || S.seq.phase === 'fadein' || S.seq.phase === 'cp';
-    // the drone under everything, and cold strings that come in as it gets tense
-    if (s === 0) {
-      tone({ t0: t, f: midi(ch.root - 12), dur: BAR + 0.3, type: 'sawtooth', gain: calm ? 0.05 : 0.07, attack: 0.4, lp: 260, dest: M });
-      if (!calm || bar === 0) for (const n of ch.ch) for (const d of [-9, 9]) tone({ t0: t, f: cents(midi(n + (I > 0.45 || hot ? 12 : 0)), d), dur: BAR + 0.4, type: 'sawtooth', gain: 0.006 + Math.min(I, 1) * 0.006, attack: 1.1, lp: 1500 + I * 1500, dest: M, rev: 0.6 });
+    const hot = S.horde, calm = S.seq.phase === 'prep' || S.seq.phase === 'fadein' || S.seq.phase === 'cp';
+    // organ chord under each bar
+    if (s === 0) for (const n of ch.ch) for (const d of [-5, 5]) tone({ t0: t, f: cents(midi(n), d), dur: BAR * 0.98, type: 'sawtooth', gain: calm ? 0.007 : 0.009, attack: 0.08, lp: 1100, dest: M, rev: 0.4 });
+    // the harpsichord: plucked sixteenths up and down the chord, two octaves
+    { const tones = [...ch.ch, ch.ch[0] + 12, ch.ch[1] + 12, ch.ch[2] + 12, ch.ch[0] + 24], n = tones[ARP[s]] + 12;
+      tone({ t0: t, f: midi(n), dur: STEP * 1.6, type: 'square', gain: calm ? 0.012 : 0.018, attack: 0.002, lp: 3200, dest: M, rev: 0.25 });
+      tone({ t0: t, f: midi(n) * 2.003, dur: STEP * 0.7, type: 'triangle', gain: calm ? 0.006 : 0.009, attack: 0.001, dest: M }); }
+    if (calm) { if (s === 0) tone({ t0: t, f: midi(ch.root - 12), dur: BAR, type: 'triangle', gain: 0.08, attack: 0.05, dest: M }); return; }
+    // the bass: eighth notes jumping octaves, a passing note into the next chord
+    if (s % 2 === 0) { const nxt = PROG[(bar + 1) % 4].root, n = s === 14 ? ch.root + (nxt > ch.root ? 2 : -1) : ch.root + (s % 4 === 2 ? 12 : 0); tone({ t0: t, f: midi(n), dur: STEP * 1.8, type: 'square', gain: 0.07, attack: 0.004, lp: 700 + I * 500, dest: M }); tone({ t0: t, f: midi(n - 12), dur: STEP * 1.6, type: 'triangle', gain: 0.1, dest: M }); }
+    // drums: four on the floor feel with a backbeat, a fill at the end of every fourth bar
+    if (s === 0 || s === 8 || (s === 6 && hot) || (s === 10 && I > 0.4)) tone({ t0: t, f: 140, to: 44, dur: 0.18, gain: 0.7, dest: M });
+    if (s === 4 || s === 12) { noise({ t0: t, dur: 0.14, f: 1900, type: 'bandpass', q: 0.9, gain: 0.26, dest: M, rev: 0.2 }); tone({ t0: t, f: 230, to: 170, dur: 0.06, type: 'triangle', gain: 0.12, dest: M }); }
+    if (barN % 4 === 3 && s >= 12) noise({ t0: t, dur: 0.1, f: 1500 + (s - 12) * 300, type: 'bandpass', q: 1, gain: 0.16 + (s - 12) * 0.04, dest: M });
+    if (s % 2 === 0 || hot) noise({ t0: t, dur: s % 4 === 2 ? 0.06 : 0.025, f: 8500, type: 'highpass', gain: s % 4 === 2 ? 0.05 : 0.03, dest: M });
+    if (s === 14 && bar === 3) noise({ t0: t, dur: 0.3, f: 6500, type: 'highpass', gain: 0.07, dest: M });
+    if (step % 64 === 0 && (hot || I > 0.5)) noise({ t0: t, dur: 1.4, f: 5000, type: 'highpass', gain: 0.13, dest: M, rev: 0.5 });
+    // the lead, once there is something to fight
+    if (I > 0.12 || hot) for (const [st, n, len] of LEAD[barN % 8]) if (st === s) {
+      tone({ t0: t, f: midi(n), dur: STEP * len * 0.92, type: 'square', gain: hot ? 0.034 : 0.028, attack: 0.006, lp: 3600, dest: M, rev: 0.3, vib: len > 2 ? [6, 3] : undefined });
+      tone({ t0: t, f: cents(midi(n), 8), dur: STEP * len * 0.9, type: 'sawtooth', gain: 0.01, lp: 2400, dest: M });
+      if (hot) tone({ t0: t, f: midi(n + 12), dur: STEP * len * 0.85, type: 'triangle', gain: 0.018, dest: M });
     }
-    if (calm) {
-      // a heartbeat, a distant metallic ping now and then
-      if (s === 0 || s === 3) tone({ t0: t, f: s ? 54 : 62, to: 38, dur: 0.16, gain: s ? 0.35 : 0.5, dest: M });
-      if (s === 8 && bar === 2) tone({ t0: t, f: midi(ch.ch[2] + 24), dur: 2.5, type: 'sine', gain: 0.02, dest: M, rev: 0.9 });
-      return;
-    }
-    // war drums: boom . . boom . . boom . (3+3+2), filled in when the horde is on
-    const dr = { 0: 0.75, 6: 0.55, 12: 0.5 }[s] ?? (hot && (s === 10 || s === 14) ? 0.35 : hot && s === 15 ? 0.25 : 0);
-    if (dr) { tone({ t0: t, f: 118, to: 44, dur: 0.5, gain: dr, dest: M, rev: 0.25 }); noise({ t0: t, dur: 0.2, f: 900, to: 140, gain: dr * 0.5, dest: M, rev: 0.3 }); }
-    // the ostinato: low strings digging in, brighter and louder as the danger grows
-    const on = OST[s], acc = OSTA[s];
-    tone({ t0: t, f: midi(ch.root + 12 + on), dur: STEP * (acc ? 0.95 : 0.7), type: 'sawtooth', gain: (acc ? 0.075 : 0.045) * (0.8 + Math.min(I, 1) * 0.4), attack: 0.006, lp: 520 + I * 1300 + (hot ? 600 : 0), dest: M });
-    if (I > 0.3 || hot) tone({ t0: t, f: midi(ch.root + on), dur: STEP * 0.8, type: 'triangle', gain: 0.06, dest: M });
-    // the clock: eighths, sixteenths in a horde
-    if (s % 2 === 0 || hot) noise({ t0: t, dur: 0.025, f: s % 4 === 0 ? 6500 : 9000, type: 'highpass', gain: s % 4 === 0 ? 0.05 : 0.028, dest: M });
-    // snare cracks on 2 and 4 once it is serious
-    if ((I > 0.35 || hot) && (s === 4 || s === 12)) noise({ t0: t, dur: 0.16, f: 1800, type: 'bandpass', q: 0.9, gain: 0.22, dest: M, rev: 0.35 });
-    // the horn
-    if (I > 0.18 || hot) for (const [st, n, len] of HORN[barN % 8]) if (st === s) {
-      for (const d of [-7, 7]) tone({ t0: t, f: cents(midi(n - 12), d), dur: STEP * len * 0.97, type: 'sawtooth', gain: hot ? 0.03 : 0.022, attack: 0.12, lp: hot ? 1600 : 1100, dest: M, rev: 0.5, vib: [4.5, 2.5] });
-      if (hot) tone({ t0: t, f: midi(n - 24), dur: STEP * len, type: 'sawtooth', gain: 0.02, attack: 0.1, lp: 700, dest: M });
-    }
-    // the braam at the top of every four bars in a horde, a riser into it
-    if (hot && step % 64 === 0) { for (const n of [ch.root - 12, ch.root - 5, ch.root]) for (const d of [-12, 12]) tone({ t0: t, f: cents(midi(n), d), dur: 2.4, type: 'sawtooth', gain: 0.045, attack: 0.05, lp: 800, dest: M, rev: 0.4 }); noise({ t0: t, dur: 1.8, f: 5000, type: 'highpass', gain: 0.12, dest: M, rev: 0.6 }); }
-    if (step % 64 === 56) { noise({ t0: t, dur: STEP * 8, f: 300, to: 5000, type: 'bandpass', q: 1.2, gain: 0.09, attack: STEP * 7.5, dest: M }); if (I > 0.25 || hot) tone({ t0: t, f: midi(ch.root + 12), to: midi(ch.root + 24), dur: STEP * 8, type: 'sawtooth', gain: 0.02, attack: STEP * 7, lp: 2000, dest: M }); }
   }
   // ---------- Menu theme ----------
   // 84 bpm in D minor (Dm Bb F C | Dm Bb Gm A): an inspiring opening that grows
