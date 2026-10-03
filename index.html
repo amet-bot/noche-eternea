@@ -337,6 +337,7 @@
       <button class="opt" id="optSfx" type="button">Efectos de sonido <b></b></button>
       <button class="opt" id="optVib" type="button">Vibración (celular) <b></b></button>
       <button class="opt" id="optFps" type="button">Rendimiento <b></b></button>
+      <button class="opt" id="optPix" type="button">Estilo <b></b></button>
       <button class="opt warn" id="optReset" type="button">Borrar progreso y logros <b></b></button>
     </div>
     <div class="ctrlhelp"><b>PC:</b> WASD moverse · Shift correr · ratón apuntar · clic disparar · clic derecho o V cuchillo · R recargar · 1–5 armas · P pausa.<br><b>Celular:</b> mitad izquierda para moverte (empuja hasta el borde para correr) · mitad derecha para apuntar y disparar · el cuchillo sale solo.</div>
@@ -409,6 +410,44 @@
   const lg = light.getContext('2d');
   const fogC = document.createElement('canvas');
   const fgx = fogC.getContext('2d');
+  // Pixel art: the world is drawn into a small buffer (about one pixel per unit of the world),
+  // reduced to a limited palette with an ordered dither, then blown up with hard edges.
+  // Text written into the buffer is held back and drawn afterwards at full resolution, so it stays readable.
+  const pixC = document.createElement('canvas'), pctx = pixC.getContext('2d', { alpha: false }), mctx = ctx;
+  let PK = 2, DPRP = 1;
+  const PTXT = [];
+  pctx.fillText = function (t, x, y, mw) { PTXT.push([t, x, y, mw, this.font, this.fillStyle, this.textAlign, this.textBaseline, this.globalAlpha, this.globalCompositeOperation, this.getTransform()]); };
+  const BAY = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  // the retro texture: a 4x4 ordered-dither pattern laid softly over the frame (all on the GPU, no pixel reads)
+  let BAYP = null;
+  function pixDither() {
+    if (!BAYP) { const c = document.createElement('canvas'); c.width = c.height = 4; const g = c.getContext('2d'); for (let i = 0; i < 16; i++) { const v = Math.round(BAY[i] / 15 * 255); g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(i & 3, i >> 2, 1, 1); } BAYP = pctx.createPattern(c, 'repeat'); }
+    if (!BAYP) return;
+    pctx.save(); pctx.setTransform(1, 0, 0, 1, 0, 0); pctx.globalCompositeOperation = 'soft-light'; pctx.globalAlpha = 0.22; pctx.fillStyle = BAYP; pctx.fillRect(0, 0, pixC.width, pixC.height); pctx.restore();
+  }
+  function pixBlit() {
+    if (!LOWFX) pixDither();
+    mctx.save(); mctx.setTransform(1, 0, 0, 1, 0, 0); mctx.globalAlpha = 1; mctx.globalCompositeOperation = 'source-over'; mctx.imageSmoothingEnabled = false;
+    // a touch more punch, like a limited palette
+    if (!TOUCH) mctx.filter = 'saturate(1.18) contrast(1.06)';
+    mctx.drawImage(pixC, 0, 0, pixC.width * PK, pixC.height * PK);
+    mctx.restore();
+    for (const [t, x, y, mw, font, fs, ta, tb, ga, gco, m] of PTXT) {
+      if (!m) continue;
+      mctx.save(); mctx.setTransform(m.a * PK, m.b * PK, m.c * PK, m.d * PK, m.e * PK, m.f * PK);
+      mctx.font = font; mctx.fillStyle = fs; mctx.textAlign = ta; mctx.textBaseline = tb; mctx.globalAlpha = ga; mctx.globalCompositeOperation = gco;
+      if (mw === undefined) mctx.fillText(t, x, y); else mctx.fillText(t, x, y, mw);
+      mctx.restore();
+    }
+    PTXT.length = 0;
+  }
+  // a full-screen scene (menu, cinematics) drawn through the pixel buffer
+  function pixDraw(fn) {
+    if (!PIX) return fn();
+    const keep = ctx; ctx = pctx; pctx.setTransform(DPRP, 0, 0, DPRP, 0, 0);
+    try { fn(); } finally { ctx = keep; }
+    pixBlit();
+  }
   const $ = id => document.getElementById(id);
   const rand = (a, b) => a + Math.random() * (b - a);
   const mod = (a, n) => ((a % n) + n) % n;
@@ -486,17 +525,22 @@
   // W,H = screen size. Z = camera zoom. VW,VH = how much of the world is visible.
   let W = 0, H = 0, Z = 1.4, VW = 0, VH = 0;
 
+  let PIX = OPT.pixel !== false;
   let DPR = 1;
   function resize() {
-    const dpr = TOUCH ? QL[QI].rs : Math.min(2, Math.max(1.35, window.devicePixelRatio || 1));
+    // in pixel art the laptop draws at the screen's own density, so each art pixel is a whole number of screen pixels
+    const dpr = TOUCH ? QL[QI].rs : PIX ? (window.devicePixelRatio || 1) : Math.min(2, Math.max(1.35, window.devicePixelRatio || 1));
     DPR = dpr;
     W = window.innerWidth; H = window.innerHeight;
     cvs.width = W * dpr; cvs.height = H * dpr;
     cvs.style.width = W + 'px'; cvs.style.height = H + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // a close camera keeps the view tight; phones in landscape get a little more room
     Z = Math.min(W, H) < 500 ? 1.1 : W < 720 ? 1.35 : 1.7;
     VW = W / Z; VH = H / Z;
+    PK = Math.max(1, Math.round(dpr * Z)); DPRP = dpr / PK;
+    pixC.width = Math.ceil(W * DPRP) + 1; pixC.height = Math.ceil(H * DPRP) + 1;
+    cvs.style.imageRendering = PIX ? 'pixelated' : 'auto';
     light.width = Math.max(1, Math.ceil(W / LS)); light.height = Math.max(1, Math.ceil(H / LS));
     fogC.width = light.width; fogC.height = light.height;
   }
@@ -555,6 +599,46 @@
     } catch (err) { AU.C = null; }
   }
   const now = () => AU.C.currentTime;
+  // ---------- Zombie voices ----------
+  // A rotten throat: a sawtooth with a shaking pitch, through two vowel formants that slide,
+  // breath and a wet rasp, and a tremolo that makes it gurgle. Big ones are deeper, the young squeal.
+  // Each voice is placed where the zombie is: quieter far away, left or right of you.
+  const ZV = { n: 0 };
+  function zvoice(kind, e) {
+    if (!canSfx() || !AU.noise) return;
+    let vol = 1, pan = 0;
+    if (e && S && S.p) { const dx = e.x - S.p.x, dy = e.y - S.p.y, d = Math.hypot(dx, dy); if (d > 900) return; vol = 1 / (1 + d / 240); pan = Math.max(-0.85, Math.min(0.85, dx / 420)); }
+    if (ZV.n >= (TOUCH ? 3 : 5)) return;
+    const C = AU.C, t = now(), ty = e ? e.type : 'zombie';
+    const deep = { brute: 0.62, boss: 0.5, verdugo: 0.45, madre: 0.7, bloater: 0.7, blind: 0.8, cria: 2.1, runner: 1.25, leaper: 1.3, screamer: 1.35, sombra: 1.1, spitter: 1.05 }[ty] ?? (e ? 0.85 + (e.seed || 0.5) * 0.3 : 1);
+    const V = { moan: [rand(70, 100), rand(0.78, 0.92), rand(1.1, 2.0), 0.085, 0.4, [[620, 400], [1000, 780]], rand(5, 8), 0.3],
+      snarl: [rand(115, 160), rand(0.72, 0.86), rand(0.35, 0.6), 0.11, 0.9, [[800, 720], [1300, 1500]], rand(18, 26), 0.25],
+      hurt: [rand(140, 185), 0.7, rand(0.16, 0.26), 0.1, 0.6, [[760, 560], [1250, 1000]], 0, 0],
+      death: [rand(105, 135), 0.42, rand(0.7, 1.1), 0.12, 0.7, [[720, 300], [1150, 650]], rand(16, 24), 0.8],
+      bite: [rand(150, 205), 0.7, rand(0.22, 0.36), 0.13, 1.0, [[880, 760], [1400, 1650]], rand(22, 30), 0.3],
+      gurgle: [rand(80, 110), 0.85, rand(0.6, 1.0), 0.08, 0.5, [[560, 420], [950, 860]], rand(14, 22), 0.85] }[kind];
+    if (!V) return;
+    const [f0, fall, dur, g0, breath, F, trem, tremK] = V, f = f0 * deep, sq = Math.sqrt(deep), end = t + dur;
+    ZV.n++; setTimeout(() => { ZV.n--; }, dur * 1000 + 60);
+    const out = C.createGain(); out.gain.value = vol;
+    if (C.createStereoPanner) { const pn = C.createStereoPanner(); pn.pan.value = pan; out.connect(pn); pn.connect(AU.sfx); } else out.connect(AU.sfx);
+    const rv = C.createGain(); rv.gain.value = 0.22 + (1 - vol) * 0.3; out.connect(rv); rv.connect(AU.rev);
+    const env = C.createGain(); env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(g0, t + Math.min(0.1, dur * 0.25)); env.gain.setValueAtTime(g0, t + dur * 0.55); env.gain.exponentialRampToValueAtTime(0.0001, end); env.connect(out);
+    if (trem) { const lf = C.createOscillator(), lg3 = C.createGain(); lf.frequency.value = trem; lg3.gain.value = g0 * tremK; lf.connect(lg3); lg3.connect(env.gain); lf.start(t); lf.stop(end + 0.05); }
+    // the throat, its pitch never steady
+    const src = C.createGain();
+    const o = C.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * fall, end); o.connect(src);
+    const jt = C.createOscillator(), jg = C.createGain(); jt.type = 'square'; jt.frequency.value = rand(8, 15); jg.gain.value = f * 0.07; jt.connect(jg); jg.connect(o.frequency);
+    const nz = C.createBufferSource(); nz.buffer = AU.noise; const ng = C.createGain(); ng.gain.value = breath; nz.connect(ng); ng.connect(src);
+    // mouth: a muffled body and two vowel formants
+    const body = C.createBiquadFilter(); body.type = 'lowpass'; body.frequency.value = 700 * sq; body.Q.value = 1.5; src.connect(body); body.connect(env);
+    for (const [a, b] of F) { const bp = C.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 6; bp.frequency.setValueAtTime(a * sq, t); bp.frequency.linearRampToValueAtTime(b * sq, end); const bg = C.createGain(); bg.gain.value = 2.2; src.connect(bp); bp.connect(bg); bg.connect(env); }
+    // a wet rasp in the throat
+    const rz = C.createBufferSource(); rz.buffer = AU.noise; const rf = C.createBiquadFilter(); rf.type = 'bandpass'; rf.frequency.value = 2400 * sq; rf.Q.value = 1.6; const rg = C.createGain(); rg.gain.value = kind === 'snarl' || kind === 'bite' ? 0.7 : 0.3; rz.connect(rf); rf.connect(rg); rg.connect(env);
+    const off = Math.random() * 1.5;
+    o.start(t); jt.start(t); nz.start(t, off); rz.start(t, (off + 0.4) % 1.5);
+    o.stop(end + 0.05); jt.stop(end + 0.05); nz.stop(end + 0.05); rz.stop(end + 0.05);
+  }
   const canSfx = () => AU.C && AU.sfxOn;
   function throttle(key, ms) { const t = performance.now(); if (AU.last[key] && t - AU.last[key] < ms) return false; AU.last[key] = t; return true; }
 
@@ -2124,7 +2208,7 @@
     if (e.elite) { META.elites++; S.drops.push({ x: e.x + 8, y: e.y, kind: 'scrap', n: 5 }, { x: e.x - 8, y: e.y, kind: 'ammo', gun: S.cur, n: AMMO[S.cur].pack }); S.texts.push({ x: e.x, y: e.y - 34, txt: 'ÉLITE', life: 1.1, big: true }); buzz(30); }
     if (pk.boom && !S.inBoom && Math.random() < 0.2 * pk.boom) { S.inBoom = true; explode(e.x, e.y, 70, 28 + 10 * pk.boom); S.inBoom = false; }
     if ((META.kills & 7) === 0 || e.elite || e.type === 'boss') checkAch();
-    SFX.splat();
+    SFX.splat(); if (e.type !== 'verdugo') zvoice('death', e);
     S.decals.push({ x: e.x, y: e.y, r: e.r * rand(0.9, 1.5), rot: Math.random() * 3, a: 1 });
     if (S.decals.length > 140) S.decals.shift();
     if (e.type !== 'cria' && e.type !== 'verdugo' && !e.popped) { S.corpses.push({ x: e.x, y: e.y, a: e.dir + (Math.random() < 0.5 ? 1.3 : -1.3), r: e.r, skin: e.skin, shirt: e.shirt, pants: e.pants, t: S.t }); if (S.corpses.length > (TOUCH ? 14 : 40)) S.corpses.shift(); }
@@ -2237,7 +2321,7 @@
     if (e.type === 'verdugo' && (e.vs === 'stuck' || e.vs === 'dazed')) { dmg *= 1.7; crit = crit || Math.random() < 0.15; }
     const kb = e.type === 'verdugo' ? 0.03 : e.type === 'boss' ? 0.1 : e.type === 'brute' ? 0.4 : 1;
     e.kx += kx * kb; e.ky += ky * kb;
-    SFX.hit();
+    SFX.hit(); if (e.type !== 'verdugo' && Math.random() < 0.3) zvoice('hurt', e);
     const ka = (kx || ky) ? Math.atan2(ky, kx) : undefined;
     blood(e.x, e.y - e.r * 0.3, heavy ? 3 : 2, ka, heavy ? 240 : 120);
     if (heavy && S.hitstopCd <= 0) { S.hitstop = 0.035; S.hitstopCd = 0.3; }
@@ -2778,6 +2862,10 @@
       const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1;
       if (e.blkT > 0) e.blkT -= dt;
       if (e.rage > 0) e.rage -= dt;
+      if ((e.vT = (e.vT ?? rand(1, 8)) - dt) <= 0) {
+        e.vT = e.state === 'chase' ? rand(2.5, 6) : rand(5, 11);
+        if (d < 700 && !e.hide && e.type !== 'verdugo') zvoice(e.state === 'chase' ? (Math.random() < 0.65 ? 'snarl' : 'moan') : Math.random() < 0.7 ? 'moan' : 'gurgle', e);
+      }
       if (e.type === 'verdugo') { if (verdugoTick(e, dx, dy, d, dt, E)) return gameOver(); continue; }
       if (e.type === 'sombra') {
         // your beam and your muzzle flash reveal it; up close you see it anyway
@@ -2789,12 +2877,12 @@
       if (e.feed || e.lurk) {
         e.ph += dt * 3; e.flash = Math.max(0, e.flash - dt);
         if (e.feed && Math.random() < dt * 1.5) blood(e.x + Math.cos(e.dir) * 10, e.y + Math.sin(e.dir) * 10, 1, undefined, 40);
-        if (d < (e.feed ? 150 : 120) * (p.sprint ? 1.6 : 1) || (S.flashOn && d < 220 && e.lurk)) { wake(e); e.rise = 0.7; SFX.groan(); }
+        if (d < (e.feed ? 150 : 120) * (p.sprint ? 1.6 : 1) || (S.flashOn && d < 220 && e.lurk)) { wake(e); e.rise = 0.7; zvoice('snarl', e); }
         continue;
       }
       if (e.hide) {
         e.ph += dt * 2;
-        if (d < 95 || e.hp < e.maxHp) { wake(e); e.lunge = 0.7; SFX.groan(); }
+        if (d < 95 || e.hp < e.maxHp) { wake(e); e.lunge = 0.7; zvoice('snarl', e); }
         else continue;
       }
       if (e.rise > 0) { e.rise -= dt; e.flash = Math.max(0, e.flash - dt); continue; }
@@ -2877,7 +2965,7 @@
         if (e.type === 'acorazado' && (e.chargeCd -= dt) <= 0 && d < 280 && d > 90) { e.chargeCd = rand(4, 6.5); e.brace = 0.6; SFX.windup(); continue; }
         if (e.type === 'madre' && (e.birthCd -= dt) <= 0 && d < 640) { e.birthCd = Math.max(4.5, rand(6.5, 8.5) - S.night * 0.3); e.birth = 1.1; SFX.swell(); continue; }
         // runners throw themselves the last few steps
-        if (e.type === 'runner' && (e.lungeCd -= dt) <= 0 && d < 170 && d > 60) { e.lungeCd = rand(2.2, 3.6); e.lunge = 0.32; SFX.groan(); }
+        if (e.type === 'runner' && (e.lungeCd -= dt) <= 0 && d < 170 && d > 60) { e.lungeCd = rand(2.2, 3.6); e.lunge = 0.32; zvoice('snarl', e); }
         if (e.type === 'boss' && (e.volleyCd = (e.volleyCd ?? 6) - dt) <= 0 && d > 140) { e.volleyCd = rand(6, 8.5); e.spit = 0.85; e.volley = true; SFX.gurgle(); banner('¡Lluvia de ácido!'); continue; }
       }
       if (e.scream > 0) {
@@ -2899,7 +2987,7 @@
         if (seen) {
           wake(e);
           if (e.type === 'screamer' && !e.screamed) { e.screamed = true; e.scream = 1.3; SFX.shriek(); continue; }
-          if (Math.random() < 0.5) SFX.groan();
+          zvoice(Math.random() < 0.6 ? 'snarl' : 'moan', e);
         }
       }
       if (e.big && e.state === 'chase' && live && !safe && !inBase) {
@@ -2972,6 +3060,7 @@
       for (const f of fires) { const fx = e.x - f.x, fy = e.y - f.y, fd = Math.hypot(fx, fy) || 1; if (fd < 150) { e.x = f.x + fx / fd * 150; e.y = f.y + fy / fd * 150; } }
       if (d < e.r + p.r && p.inv <= 0) {
         wake(e);
+        zvoice('bite', e);
         if (hitPlayer(e.dmg)) return gameOver();
         // the plain dead and the young grab hold and slow you; crawlers bite and you bleed
         if (e.type === 'zombie' || e.type === 'cria') { S.grab = 0.8; if (!(S.grabTxt > 0)) { S.grabTxt = 3; S.texts.push({ x: p.x, y: p.y - 34, txt: '¡TE AGARRAN!', life: 0.8, big: true }); } }
@@ -2989,7 +3078,7 @@
       } else e.offT = 0;
       if (e.state !== 'chase' && d > 1700) e.dead = true;
     }
-    if ((S.groanT -= dt) <= 0) { S.groanT = rand(2.5, 5); if (E.some(e => !e.dead && Math.hypot(e.x - p.x, e.y - p.y) < 450)) SFX.groan(); }
+    if ((S.groanT -= dt) <= 0) { S.groanT = rand(2.5, 5); const z = E.find(e => !e.dead && Math.hypot(e.x - p.x, e.y - p.y) < 450); if (z) zvoice('moan', z); }
     AU.boost = Math.max(0, AU.boost - dt);
     AU.danger = !live ? 0 : Math.min(1, nearCount / 12 + Math.max(0, 0.6 - p.hp / p.maxHp) * 1.5 + (S.horde ? 0.4 : 0));
     if (live && (S.ambT = (S.ambT ?? 8) - dt) <= 0) { S.ambT = rand(9, 20); const sfx = [SFX.owl, SFX.scream, SFX.branch, SFX.gust, SFX.owl, SFX.gust][Math.floor(Math.random() * 6)]; sfx(); if (sfx === SFX.gust) { S.windT = 5; S.windA = Math.random() < 0.5 ? rand(-0.3, 0.3) : Math.PI + rand(-0.3, 0.3); } }
@@ -4044,6 +4133,7 @@
   $('optMusic').addEventListener('click', () => { toggleMusic(); buildOpts(); });
   $('optSfx').addEventListener('click', () => { toggleSfx(); buildOpts(); });
   $('optVib').addEventListener('click', () => { OPT.vib = !OPT.vib; saveOpts(); buzz(40); buildOpts(); });
+  $('optPix').addEventListener('click', () => { PIX = !PIX; OPT.pixel = PIX; saveOpts(); ZC.clear(); resize(); buildOpts(); });
   $('optFps').addEventListener('click', () => { OPT.fps = OPT.fps === 30 ? 45 : OPT.fps === 45 ? 60 : 30; saveOpts(); buildOpts(); });
   $('optReset').addEventListener('click', () => {
     if (performance.now() - confirmReset > 3000) { confirmReset = performance.now(); $('optReset').querySelector('b').textContent = 'Toca otra vez para confirmar'; return; }
@@ -4059,6 +4149,7 @@
     $('optSfx').querySelector('b').textContent = AU.sfxOn ? 'Sí' : 'No';
     $('optVib').querySelector('b').textContent = OPT.vib ? 'Sí' : 'No';
     $('optFps').querySelector('b').textContent = FPS_LABEL[OPT.fps] || OPT.fps + ' FPS';
+    $('optPix').querySelector('b').textContent = PIX ? 'Pixel art' : 'HD';
     if (!confirmReset) $('optReset').querySelector('b').textContent = '';
   }
   function buildAch() {
@@ -4546,7 +4637,7 @@
   const zPlain = e => TOUCH && !e.big && !e.elite && e.type !== 'verdugo' && !(e.flash > 0) && !(e.brace > 0) && !(e.charge > 0) && e.type !== 'madre' && !e.hide && !e.feed && !e.lurk && !(e.rise > 0) && !(e.z > 0) && !(e.crouch > 0) && !(e.pounce > 0) && !(e.stun > 0) && !(e.squash > 0) && !(e.spit > 0) && !(e.fuse > 0) && !(e.scream > 0) && e.type !== 'crawler' && e.type !== 'bloater';
   function zSprite(e) {
     const TAU = Math.PI * 2, pi = Math.floor(mod(e.ph, TAU) / TAU * ZC_PH) % ZC_PH, di = Math.round(mod(e.dir, TAU) / TAU * ZC_DIR) % ZC_DIR, sb = Math.floor((e.seed || 0) * 4) % 4;
-    const f = Z * DPR, key = `${e.type}|${pi}|${di}|${sb}|${LOWFX ? 1 : 0}|${f.toFixed(2)}`;
+    const f = Z * (PIX ? DPRP : DPR), key = `${e.type}|${pi}|${di}|${sb}|${LOWFX ? 1 : 0}|${f.toFixed(2)}`;
     let sp = ZC.get(key);
     if (sp) return sp;
     if (ZC.size > 700) ZC.clear();
@@ -5155,9 +5246,9 @@
   function drawSeq() {
     const Q = S.seq;
     if (S.whiteFlash > 0) { ctx.fillStyle = `rgba(255,245,225,${S.whiteFlash})`; ctx.fillRect(0, 0, W, H); }
-    if (Q.phase === 'fire' && S.state !== 'menu') { drawFireIntro(Q.t); return; }
-    if (Q.phase === 'verdugo' && S.state !== 'menu') { drawVerdIntro(Q.t); return; }
-    if (Q.phase === 'cp' && S.state !== 'menu') { drawCheckScene(Q); return; }
+    if (Q.phase === 'fire' && S.state !== 'menu') { pixDraw(() => drawFireIntro(Q.t)); return; }
+    if (Q.phase === 'verdugo' && S.state !== 'menu') { pixDraw(() => drawVerdIntro(Q.t)); return; }
+    if (Q.phase === 'cp' && S.state !== 'menu') { pixDraw(() => drawCheckScene(Q)); return; }
     if (Q.phase === 'title' && S.state !== 'menu') {
       const tt = Q.t, fin = isFinal(S.night), base = Math.min(W, H), cy = H * 0.46;
       const a = Math.max(0, Math.min(1, tt / 0.7, (3.6 - tt) / 0.7));
@@ -5354,9 +5445,10 @@
   }
   const FOGC = { n: 0, cam: null };
   function render() {
+    ctx = PIX ? pctx : mctx; if (PIX) pctx.setTransform(DPRP, 0, 0, DPRP, 0, 0);
     const p = S.p, sh = S.shake;
     camX = p.x - VW / 2 + rand(-.5, .5) * sh + S.kickX + S.leadX; camY = p.y - VH / 2 + rand(-.5, .5) * sh + S.kickY + S.leadY;
-    camX = Math.round(camX * Z) / Z; camY = Math.round(camY * Z) / Z;
+    { const cq = Z * (PIX ? DPRP : 1); camX = Math.round(camX * cq) / cq; camY = Math.round(camY * cq) / cq; }
     const on = (x, y, m) => x > -m && y > -m && x < VW + m && y < VH + m;
     const t = performance.now() / 1000;
     const baseOn = on(-camX, -camY, 420);
@@ -5837,11 +5929,12 @@
     ctx.restore();
 
     // screen space
+    if (PIX) { ctx = mctx; pixBlit(); }
     if (!TOUCH) {
-      // cool shadows, warm centre, a little film grain
+      // cool shadows, warm centre, and film grain (not over pixel art)
       if (!POST.grade || POST.w !== W || POST.h !== H) buildPost();
       ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = POST.grade; ctx.fillRect(0, 0, W, H); ctx.restore();
-      ctx.save(); ctx.globalAlpha = 0.045; ctx.translate(-Math.random() * 256, -Math.random() * 256); ctx.fillStyle = POST.grain; ctx.fillRect(0, 0, W + 256, H + 256); ctx.restore();
+      if (!PIX) { ctx.save(); ctx.globalAlpha = 0.045; ctx.translate(-Math.random() * 256, -Math.random() * 256); ctx.fillStyle = POST.grain; ctx.fillRect(0, 0, W + 256, H + 256); ctx.restore(); }
     }
     { const hk = p.hp / p.maxHp, a = (hk < 0.35 ? (0.35 - hk) / 0.35 * (0.55 + 0.45 * Math.sin(S.t * 7)) : 0) + S.hurtFlash * 2.2;
       if (a > 0.02) { if (!POST.red || POST.w !== W || POST.h !== H) buildPost(); ctx.globalAlpha = Math.min(1, a); ctx.drawImage(POST.red, 0, 0, W, H); ctx.globalAlpha = 1; } }
@@ -6311,8 +6404,8 @@
     watchQuality(t);
     if (S.state === 'cine') {
       updateCine(dt);
-      if (S.state === 'cine') drawCine(); else render();
-    } else if (S.state === 'menu') drawMenuScene(t / 1000);
+      if (S.state === 'cine') pixDraw(drawCine); else render();
+    } else if (S.state === 'menu') pixDraw(() => drawMenuScene(t / 1000));
     else {
       if (S.state === 'play') {
         updateSeq(dt);
