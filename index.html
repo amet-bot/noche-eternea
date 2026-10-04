@@ -4108,18 +4108,28 @@
     [['you', 'Un mapa… la ruta en rojo termina en una cruz. El hospital.'], ['marco', 'San Rafael. Es territorio de ellos. Entra, sácala y no mires atrás.'], ['lucia', '…te veo… desde la ventana… date prisa, por favor…']],
   ];
   const CP_WHO = { you: ['TÚ', '#e9b949'], marco: ['MARCO · RADIO', '#b5d86a'], lucia: ['LUCÍA · SEÑAL DÉBIL', '#e58a8a'] };
-  const CP_INTRO = 2.8;
+  const CP_INTRO = 7.2;
   function startCheckScene(i) {
     // the fire keeps them back while you catch your breath
     S.enemies = []; S.eshots = []; S.pools = []; S.dash = null; S.flames = []; S.burn = 0; input.fire = false; S.clearFx = null; S.slowT = 0;
-    S.seq = { phase: 'cp', t: 0, cp: i, line: 0, lt: 0, out: 0 };
+    S.seq = { phase: 'cp', t: 0, cp: i, line: 0, lt: 0, out: 0, pp: null, cam: null, stepN: 0 };
     setTimeout(() => SFX.ignite(), 450);
     clearRadio(); $('note').hidden = true; noteLife = 0; $('toast').hidden = true; toastLife = 0; bannerLife = 0;
     document.body.classList.add('intro'); setMusicGain(0, 0.8);
-    SFX.clue(); SFX.crackle(1);
+    SFX.crackle(1);
   }
   function checkSceneTick(Q, dt) {
-    if (Q.out) { Q.out += dt; if (Q.out > 1.7) finishCheckScene(); return; }
+    // the puppet and the camera ease toward where the scene wants them
+    const P = cpPose(Q), kp = 1 - Math.exp(-dt * (Q.t < CP_INTRO ? 16 : 7));
+    if (!Q.pp) Q.pp = { ...P }; else for (const key in P) Q.pp[key] += (P[key] - Q.pp[key]) * kp;
+    const C = cpCam(Q, Q.pp), kc = 1 - Math.exp(-dt * (Q.t < CP_INTRO ? 5 : 2.6));
+    if (!Q.cam) Q.cam = { ...C }; else for (const key in C) Q.cam[key] += (C[key] - Q.cam[key]) * kc;
+    const sn = Math.floor(Q.pp.ph / Math.PI); if (sn !== Q.stepN) { Q.stepN = sn; if (Q.pp.wa > 0.3) SFX.step(false); }
+    const prev = Q.t - dt, hit = a => Q.t < CP_INTRO && prev < a && Q.t >= a;
+    if (hit(2.85)) SFX.step(true);
+    if (hit(3.45)) { SFX.clue(); buzz(20); }
+    if (hit(5.4)) SFX.groan();
+    if (Q.out) { Q.out += dt; if (Q.out > 2.3) finishCheckScene(); return; }
     if (Q.t < CP_INTRO) { if (Math.random() < 0.3) SFX.crackle(0.5); return; }
     const L = CP_TALK[Q.cp][Q.line];
     Q.lt += dt;
@@ -4147,21 +4157,187 @@
       radio('Sigue la ruta del mapa hasta el hospital. Te lo marco en la brújula.');
     }
   }
+  // ---------------------------------------------------------------- the camp scene, acted out
+  // The hero as a puppet: hips, a leaning torso, a head that tilts and looks back, arms and legs solved
+  // with two-bone IK. Facing +x, feet at the origin, same look as the menu hero.
+  const ACT = document.createElement('canvas'); ACT.width = 720; ACT.height = 660;
+  const ik2 = (ax, ay, bx, by, l1, l2, sd) => { const dx = bx - ax, dy = by - ay, d = Math.max(0.01, Math.min(Math.hypot(dx, dy), l1 + l2 - 0.01)), a = Math.atan2(dy, dx), b = Math.acos(Math.max(-1, Math.min(1, (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d)))); return [ax + Math.cos(a - sd * b) * l1, ay + Math.sin(a - sd * b) * l1]; };
+  function drawActor(P, t, cp) {
+    const g = ACT.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 720, 660); g.setTransform(2, 0, 0, 2, 360, 636);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    const br = Math.sin(t * 1.8) * 1.6, blink = t % 4.3 < 0.13, D = P.cr * 52, bob = Math.abs(Math.sin(P.ph)) * 3 * P.wa;
+    const hip = [P.cr * 4, -94 + D + bob], cl = Math.cos(P.ln), sl = Math.sin(P.ln);
+    const TF = (x, y) => [hip[0] + x * cl - (y + 94) * sl, hip[1] + x * sl + (y + 94) * cl];
+    const torso = fn => { g.save(); g.translate(hip[0], hip[1]); g.rotate(P.ln); g.translate(0, 94); fn(); g.restore(); };
+    torso(() => {
+    // scarf streaming in the wind
+    const top = [], bot = [];
+    for (let i = 0; i <= 7; i++) { const k = i / 7, y = -166 + br + k * 14 + Math.sin(t * 6.5 - k * 5) * 8 * k, x = -8 - k * 84 + Math.sin(t * 4 - k * 3) * 3 * k, hw = 6.5 - k * 4; top.push([x, y - hw]); bot.unshift([x, y + hw]); }
+    g.fillStyle = '#8e2621'; g.beginPath(); g.moveTo(top[0][0], top[0][1]); for (const [x, y] of top.concat(bot)) g.lineTo(x, y); g.closePath(); g.fill();
+    g.strokeStyle = '#6a1a16'; g.lineWidth = 1.5; g.beginPath(); top.forEach(([x, y], i) => i ? g.lineTo(x, y + 4) : g.moveTo(x, y + 4)); g.stroke();
+    // radio antenna and backpack with a bedroll
+    const ax = -54 + Math.sin(t * 2.2) * 2.5;
+    g.strokeStyle = '#141414'; g.lineWidth = 2; g.beginPath(); g.moveTo(-40, -170 + br); g.quadraticCurveTo(-46, -205 + br, ax, -238 + br); g.stroke();
+    g.fillStyle = Math.sin(t * 5) > 0.2 ? '#ff4a3a' : '#5a1a14'; g.beginPath(); g.arc(ax, -239 + br, 2.5, 0, 7); g.fill();
+    g.fillStyle = '#3e3326'; rr(g, -52, -170 + br, 32, 76, 6); g.fill();
+    g.fillStyle = '#56472f'; rr(g, -50, -132 + br, 27, 26, 4); g.fill();
+    g.fillStyle = '#2a2218'; g.fillRect(-50, -134 + br, 27, 4); g.fillRect(-40, -134 + br, 6, 9);
+    g.fillStyle = '#6b5a3c'; g.beginPath(); g.ellipse(-37, -174 + br, 23, 10, 0, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 2; g.beginPath(); g.moveTo(-48, -183 + br); g.lineTo(-48, -165 + br); g.moveTo(-27, -183 + br); g.lineTo(-27, -165 + br); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1; g.beginPath(); g.ellipse(-37, -176 + br, 18, 5, 0, Math.PI, 0); g.stroke();
+    });
+    // legs: a walk cycle, a stance, a kneel (the far knee goes down to the ground)
+    const foot = i => { const ph = P.ph + i * Math.PI, base = i ? -18 : 22, kneel = i ? -30 : 26;
+      let x = base + (Math.sin(ph) * 24 - base) * P.wa, y = -10 - Math.max(0, Math.cos(ph)) * 12 * P.wa; x += (kneel - x) * P.cr; return [x, y]; };
+    const leg = (i, col, boot) => { const [fx, fy] = foot(i), hx = hip[0] + (i ? -8 : 8), [kx, ky] = ik2(hx, hip[1], fx, fy, 46, 46, 1);
+      g.strokeStyle = col; g.lineWidth = 17; g.beginPath(); g.moveTo(hx, hip[1]); g.lineTo(kx, ky); g.lineTo(fx, fy); g.stroke();
+      g.fillStyle = boot; rr(g, fx - 12, fy - 6, 34, 14, 5); g.fill(); g.fillStyle = '#070605'; g.fillRect(fx - 12, fy + 5, 34, 3);
+      return [kx, ky]; };
+    leg(1, '#23271e', '#120e09');
+    const [nkx, nky] = leg(0, '#2b2f24', '#18140f');
+    g.fillStyle = '#1b1e17'; g.beginPath(); g.ellipse(nkx, nky, 9, 11, 0.2, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 1.5; g.beginPath(); g.arc(nkx, nky, 7, -2.2, -0.6); g.stroke();
+    // the far hand always keeps the Thompson; the near one is on the foregrip or free for what he found
+    const ca = Math.cos(P.ga), sa = Math.sin(P.ga), gs = 3.1, Gx = P.gx, Gy = P.gy + D;
+    const gx = Gx - (2 * ca - 4 * sa) * gs, gy = Gy - (2 * sa + 4 * ca) * gs, at = (u, v) => [gx + (u * ca - v * sa) * gs, gy + (u * sa + v * ca) * gs];
+    const fg = at(16.8, 5), fh = [P.hx + (fg[0] - P.hx) * P.two, P.hy + D + (fg[1] - P.hy - D) * P.two];
+    const sF = TF(-2, -152 + br), sN = TF(8, -150 + br);
+    const arm = (sh, h, col, w) => { const e = ik2(sh[0], sh[1], h[0], h[1], 36, 36, -1); g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.moveTo(sh[0], sh[1]); g.lineTo(e[0], e[1]); g.lineTo(h[0], h[1]); g.stroke(); g.fillStyle = '#1c1c1e'; g.beginPath(); g.arc(h[0], h[1], w / 2, 0, 7); g.fill(); };
+    arm(sF, [Gx, Gy], '#303b25', 13);
+    torso(() => {
+    // torso: jacket, vest, pouches, bandolier, belt
+    g.fillStyle = '#3d4a30'; g.beginPath(); g.moveTo(-20, -90); g.lineTo(22, -90); g.lineTo(26, -156 + br); g.lineTo(-22, -158 + br); g.closePath(); g.fill();
+    g.fillStyle = '#313c27'; g.beginPath(); g.moveTo(-20, -90); g.lineTo(-6, -90); g.lineTo(-6, -158 + br); g.lineTo(-22, -158 + br); g.closePath(); g.fill();
+    g.fillStyle = '#2f3a28'; rr(g, -14, -150 + br, 36, 52, 5); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1; g.setLineDash([2, 3]); rr(g, -12, -148 + br, 32, 48, 4); g.stroke(); g.setLineDash([]);
+    for (let i = 0; i < 3; i++) { const x = -11 + i * 10.5; g.fillStyle = '#4a4e3a'; rr(g, x, -121 + br, 9, 16, 2); g.fill(); g.fillStyle = '#2a2c22'; g.fillRect(x, -121 + br, 9, 4); }
+    g.fillStyle = '#1c1c1e'; rr(g, 11, -147 + br, 8, 15, 2); g.fill(); g.fillStyle = Math.sin(t * 3) > 0 ? '#6ad06a' : '#244a24'; g.fillRect(13, -144 + br, 2, 2);
+    g.strokeStyle = '#5a4a2e'; g.lineWidth = 7; g.beginPath(); g.moveTo(-18, -156 + br); g.lineTo(21, -97); g.stroke();
+    for (let i = 0; i < 7; i++) { const k = (i + 0.5) / 7, x = -18 + 39 * k, y = -156 + br + (59 - br) * k; g.fillStyle = '#b3342c'; g.fillRect(x - 1.8, y - 3, 3.6, 6); g.fillStyle = '#d9a640'; g.fillRect(x - 1.8, y + 2, 3.6, 1.6); }
+    g.fillStyle = '#1a1a1c'; rr(g, -21, -100, 45, 8, 2); g.fill();
+    g.fillStyle = '#b89a50'; rr(g, 0, -100, 7, 8, 1); g.fill(); g.fillStyle = '#1a1a1c'; g.fillRect(2, -98, 3, 4);
+    g.fillStyle = '#26221c'; rr(g, -20, -96, 11, 26, 3); g.fill(); g.fillStyle = '#141414'; g.fillRect(-18, -104, 7, 8);
+    // neck scarf and head
+    g.fillStyle = '#c9a888'; g.fillRect(-1, -178 + br, 12, 12);
+    g.fillStyle = '#9e2b25'; g.beginPath(); g.ellipse(4, -164 + br, 17, 7.5, 0, 0, 7); g.fill();
+    g.fillStyle = '#7a1f1b'; g.beginPath(); g.ellipse(4, -161 + br, 14, 3, 0, 0, Math.PI); g.fill();
+    // the head tilts on the neck; past halfway through a look back it faces the other way
+    g.save(); g.translate(5, -170 + br); g.rotate(P.hd); if (P.ht > 0.5) g.scale(-1, 1); g.translate(-5, 170 - br);
+    const H = -188 + br;
+    g.fillStyle = '#2a1e16'; g.fillRect(-13, H - 8, 9, 14);
+    g.fillStyle = '#e0c4a2'; g.beginPath(); g.arc(5, H, 17, 0, 7); g.fill(); g.beginPath(); g.ellipse(12, H + 8, 11, 8, 0, 0, 7); g.fill();
+    g.fillStyle = 'rgba(90,50,30,.2)'; g.beginPath(); g.arc(5, H, 17, Math.PI * 0.5, Math.PI * 1.5); g.fill();
+    g.fillStyle = '#d4b290'; g.beginPath(); g.moveTo(20, H - 5); g.lineTo(27, H + 3); g.lineTo(20, H + 4); g.fill();
+    g.fillStyle = 'rgba(60,40,30,.4)'; g.beginPath(); g.ellipse(12, H + 10, 11, 6, 0, 0, 7); g.fill();
+    if (P.tk > 0.5) { g.fillStyle = '#3a1a14'; g.beginPath(); g.ellipse(17.5, H + 9, 3.5, 1 + Math.abs(Math.sin(t * 14)) * 2.6, 0, 0, 7); g.fill(); }
+    else { g.strokeStyle = '#6a4030'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(14, H + 9); g.lineTo(21, H + 8); g.stroke(); }
+    g.strokeStyle = 'rgba(150,70,60,.6)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(5, H + 3); g.lineTo(9, H + 9); g.stroke();
+    if (blink) { g.strokeStyle = '#1a1210'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(12, H - 3); g.lineTo(19, H - 3); g.stroke(); }
+    else { g.fillStyle = '#f2ece2'; g.beginPath(); g.ellipse(15.5, H - 3, 3.6, 2.5, 0, 0, 7); g.fill(); g.fillStyle = '#3a2a1a'; g.beginPath(); g.arc(17, H - 3, 1.8, 0, 7); g.fill(); g.fillStyle = '#fff'; g.fillRect(17, H - 4.5, 1, 1); }
+    g.strokeStyle = '#2a1e16'; g.lineWidth = 2.6; g.beginPath(); g.moveTo(10, H - 9); g.lineTo(21, H - 7); g.stroke();
+    g.fillStyle = '#d2b08c'; g.beginPath(); g.arc(-4, H + 1, 4.5, 0, 7); g.fill(); g.fillStyle = '#b8906c'; g.beginPath(); g.arc(-4, H + 1, 2, 0, 7); g.fill();
+    // helmet, goggles, head torch
+    g.fillStyle = '#3a4528'; g.beginPath(); g.arc(5, H - 8, 20, Math.PI, 0); g.fill();
+    g.fillStyle = '#34401f'; rr(g, -16, H - 10, 44, 5, 2); g.fill();
+    g.strokeStyle = '#4c5a36'; g.lineWidth = 3; g.beginPath(); g.arc(5, H - 8, 15, Math.PI * 1.15, Math.PI * 1.55); g.stroke();
+    g.strokeStyle = 'rgba(0,0,0,.2)'; g.lineWidth = 1; g.beginPath(); for (let i = -2; i <= 2; i++) { g.moveTo(5 + i * 7, H - 10); g.lineTo(5 + i * 4, H - 26); } g.stroke();
+    g.strokeStyle = '#1a1a1c'; g.lineWidth = 2; g.beginPath(); g.moveTo(-8, H - 8); g.lineTo(-1, H + 15); g.stroke();
+    g.fillStyle = '#1a1a1c'; rr(g, -14, H - 19, 36, 4, 1); g.fill();
+    for (const x of [3, 13]) { g.fillStyle = '#111'; rr(g, x - 1, H - 25, 11, 10, 3); g.fill(); g.fillStyle = '#5fa3b5'; rr(g, x, H - 24, 9, 8, 2); g.fill(); g.fillStyle = 'rgba(255,255,255,.8)'; g.fillRect(x + 1.5, H - 22.5, 2, 2); }
+    g.fillStyle = '#222'; rr(g, 22, H - 15, 7, 7, 1); g.fill(); g.fillStyle = '#fff4c8'; g.fillRect(28, H - 14, 2, 5);
+    g.restore();
+    });
+    drawGun(g, gx, gy, P.ga, 'mp5', gs);
+    arm(sN, fh, '#3d4a30', 14);
+    if (P.hold > 0.5) { g.save(); g.translate(fh[0] + 5, fh[1] - 5); g.rotate(P.ir); g.scale(0.62, 0.62); drawClueItem(g, cp, 0, 0, t); g.restore(); g.fillStyle = '#1c1c1e'; g.beginPath(); g.arc(fh[0] - 1, fh[1] + 1, 5, 0, 7); g.fill(); }
+    // night shade, the fire in front of him, the moon above
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = 'rgba(8,10,20,.3)'; g.fillRect(0, 0, 720, 660);
+    const fl = 0.8 + 0.2 * Math.sin(t * 9) * Math.sin(t * 5.3), rg = g.createLinearGradient(720, 0, 320, 0); rg.addColorStop(0, `rgba(255,150,60,${0.6 * fl})`); rg.addColorStop(1, 'rgba(255,140,50,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, 720, 660);
+    const mg = g.createLinearGradient(0, 80, 0, 340); mg.addColorStop(0, 'rgba(160,180,230,.18)'); mg.addColorStop(1, 'rgba(160,180,230,0)'); g.fillStyle = mg; g.fillRect(0, 0, 720, 660);
+    g.globalCompositeOperation = 'source-over';
+    return { hand: fh };
+  }
+  // Where the puppet should be at each moment: the walk in, the find, the look, then how he listens to each voice
+  const CPX = 352, CP_ITEM = [400, 442], CP_LOOK = new Set(['0:0', '1:2', '2:0', '4:0']);
+  const POSE0 = { x: CPX, ph: CPX * 0.06, wa: 0, cr: 0, ln: 0.04, hd: 0.08, ht: 0, ga: 0.42, gx: 20, gy: -112, two: 1, hx: 30, hy: -130, hold: 0, ir: 0, tk: 0 };
+  const smooth01 = v => (v = clamp01(v), v * v * (3 - 2 * v));
+  function cpPose(Q) {
+    const T = Q.t, k = (a, b) => smooth01((T - a) / (b - a)), P = { ...POSE0 };
+    const to = (o, w) => { if (w > 0) for (const key in o) P[key] += (o[key] - P[key]) * w; };
+    if (T < CP_INTRO) {
+      // he comes in out of the dark, gun low, scanning the treeline
+      const wk = clamp01((T - 0.1) / 2.2);
+      P.x = -70 + (CPX + 70) * (1 - Math.pow(1 - wk, 2.2)); P.ph = P.x * 0.06; P.wa = 1 - k(1.8, 2.35);
+      P.hd = 0.04 + Math.sin(T * 2.3) * 0.16 * (1 - k(1.6, 2.2)); P.ln = 0.1;
+      // something glints in the grass at his feet
+      to({ hd: 0.55, ln: 0.14 }, k(2.3, 2.7));
+      // he kneels, lets the gun hang, reaches for it
+      to({ cr: 1, ln: 0.6, hd: 0.45, two: 0, ga: 0.3, gx: -4, gy: -100, hx: 56, hy: -66 }, k(2.75, 3.4));
+      P.hold = T > 3.45 ? 1 : 0;
+      // stands, brings it up to his face
+      to({ cr: 0, ln: -0.06, hd: 0.3, hx: 40, hy: -168, ga: 1.15, gx: -2, gy: -96 }, k(3.65, 4.35));
+      // turns it over in the firelight
+      P.ir = Math.sin(T * 2.1) * 0.35 * k(4.3, 4.7); P.hx += Math.sin(T * 1.7) * 2; P.hd += Math.sin(T * 1.3) * 0.04;
+      // a noise behind him: a look back over his shoulder
+      to({ ht: 1, hd: -0.05, ln: -0.1, hx: 32, hy: -146, ir: 0 }, k(5.45, 5.7));
+      to({ ht: 0, hd: 0.2, ln: 0.03, hx: 26, hy: -128 }, k(6.4, 6.85));
+      return P;
+    }
+    Object.assign(P, { hold: 1, two: 0, ga: 1.15, gx: -2, gy: -96, hx: 26, hy: -128, hd: 0.18 + Math.sin(T * 0.9) * 0.03, ln: 0.03 });
+    const L = CP_TALK[Q.cp][Q.line], lt = Q.lt;
+    if (L) {
+      const talking = lt < L[1].length / 38;
+      if (Q.cp === 3 && L[0] !== 'marco') Object.assign(P, L[0] === 'you' ? { hx: 30, hy: -176, hd: -0.12, ln: 0.14 } : { hx: 14, hy: -184, hd: 0.12, ln: 0.06 });
+      else if (CP_LOOK.has(Q.cp + ':' + Q.line)) Object.assign(P, { hx: 40, hy: -166, hd: 0.3, ln: -0.04, ir: Math.sin(T * 1.6) * 0.25 });
+      else if (L[0] === 'you') Object.assign(P, { hd: 0.02 + Math.sin(lt * 1.3) * 0.05, hx: 30 + (talking ? Math.sin(lt * 3) * 6 : 0), hy: -134 + (talking ? Math.cos(lt * 2.4) * 4 : 0) });
+      else if (L[0] === 'marco') Object.assign(P, { hd: 0.32, ln: 0.06, hx: 20, hy: -112 });
+      else Object.assign(P, { hd: -0.25, ln: -0.1, hx: 14, hy: -150 + Math.sin(T * 30) * 1.5 });
+      if (L[0] === 'you' && talking) P.tk = 1;
+    }
+    if (Q.out) {
+      const o = Q.out, ko = (a, b) => smooth01((o - a) / (b - a));
+      // it goes into his vest; then he kneels to the fire, or sets off for the hospital
+      to({ hx: 6, hy: -126, hd: 0.3, ln: 0.05, ir: 0 }, ko(0, 0.45)); P.hold = o > 0.5 ? 0 : 1;
+      if (Q.cp < CLUES.length - 1) to({ cr: 1, ln: 0.18, hd: 0.12, hx: 74, hy: -150, ga: 0.3, gx: -4, gy: -100 }, ko(0.6, 1.3));
+      else { to({ two: 1, ga: 0.3, gx: 22, gy: -118, hd: -0.18, ln: 0.08 }, ko(0.55, 0.95)); P.x = CPX + Math.max(0, o - 0.95) * 50; P.ph = P.x * 0.06; P.wa = ko(0.9, 1.2); }
+    }
+    return P;
+  }
+  // The camera: a push in as he kneels, a close-up on the find, a whip to the dark behind him, then wide for the talk
+  function cpCam(Q, P) {
+    const T = Q.t, k = (a, b) => smooth01((T - a) / (b - a)), C = { x: 480 + (P.x - CPX) * 0.3, y: 300, z: 1.04 };
+    const to = (o, w) => { if (w > 0) for (const key in o) C[key] += (o[key] - C[key]) * w; };
+    if (T < CP_INTRO) {
+      to({ x: P.x + 60, y: 360, z: 1.32 }, k(2.3, 3.0));
+      to({ x: P.x + 34, y: 318, z: 1.8 }, k(3.9, 4.5));
+      to({ x: P.x - 70, y: 335, z: 1.4 }, k(5.45, 5.75));
+      to({ x: 480, y: 300, z: 1.08 }, k(6.4, 7.1));
+      return C;
+    }
+    const L = CP_TALK[Q.cp][Q.line];
+    if (L) { const close = CP_LOOK.has(Q.cp + ':' + Q.line) || (Q.cp === 3 && L[0] !== 'marco');
+      Object.assign(C, close ? { x: P.x + 40, y: 322, z: 1.55 } : L[0] === 'you' ? { x: P.x + 100, y: 340, z: 1.25 } : L[0] === 'marco' ? { x: 470, y: 300, z: 1.1 } : { x: P.x + 70, y: 330, z: 1.35 }); }
+    if (Q.out) to(Q.cp === CLUES.length - 1 ? { x: 680, y: 285, z: 1.3 } : { x: 440, y: 385, z: 1.5 }, smooth01(Q.out / 1.6));
+    return C;
+  }
   // the scene: night, the checkpoint fire, you with what you found, the camp behind, the dead at the edge of the light
   function drawCheckScene(Q) {
     if (!MENU.bg) buildMenuArt();
     const g = ctx, t = S.t, s2 = Math.max(W / 960, H / 540), ox = (W - 960 * s2) / 2, oy = (H - 540 * s2) / 2;
     const intro = Q.t < CP_INTRO, L = intro || Q.out ? null : CP_TALK[Q.cp][Q.line], talkK = L ? Math.min(1, Q.lt / 0.5) : 0;
     const ease3 = v => 1 - Math.pow(1 - clamp01(v), 3);
-    const crane = Math.pow(1 - clamp01(Q.t / 2.4), 3), outK = Q.out ? clamp01(Q.out / 1.4) : 0;
+    const crane = Math.pow(1 - clamp01(Q.t / 2.4), 3), outK = Q.out ? clamp01(Q.out / 2) : 0;
     const ignite = 0.15 + 0.85 * ease3((Q.t - 0.45) / 0.7) + Math.max(0, 0.45 * (1 - Math.abs(Q.t - 1.05) / 0.35)) + outK * 0.7;
-    const walk = 1 - ease3((Q.t - 0.2) / 1.6), itemK = ease3((Q.t - 1.7) / 0.55);
+    const P = Q.pp || cpPose(Q), cam = Q.cam || cpCam(Q, P);
     const gust = 1 + 2.2 * Math.pow(Math.max(0, Math.sin(t * 0.33)), 6);
     g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
     // camera: a crane coming down out of the sky, a slow drift, a push in on whoever speaks, a slow dolly toward the fire at the end
-    const push = L && L[0] === 'you' ? 0.05 * talkK : 0, zoom = 1.03 + Q.t * 0.008 + push + crane * 0.14 + outK * 0.28;
-    const camShake = Math.max(0, 0.45 * (1 - Math.abs(Q.t - 1.05) / 0.35)) * 4;
-    g.save(); g.translate(ox + 480 * s2, oy + 300 * s2); g.scale(s2 * zoom, s2 * zoom); g.translate(-480 + Math.sin(t * 0.25) * 14 + push * 600 + (Math.random() - 0.5) * camShake - outK * 40, -300 + Math.cos(t * 0.2) * 4 + crane * 190 + outK * 26 + (Math.random() - 0.5) * camShake);
+    const zoom = cam.z + crane * 0.14;
+    const camShake = Math.max(0, 0.45 * (1 - Math.abs(Q.t - 1.05) / 0.35)) * 4 + (L && L[0] === 'lucia' ? 1.2 : 0);
+    g.save(); g.translate(ox + 480 * s2, oy + 300 * s2); g.scale(s2 * zoom, s2 * zoom); g.translate(-cam.x + Math.sin(t * 0.25) * 8 + (Math.random() - 0.5) * camShake, -cam.y + Math.cos(t * 0.2) * 4 + crane * 190 + (Math.random() - 0.5) * camShake);
     const sky = g.createLinearGradient(0, 0, 0, 400); sky.addColorStop(0, '#03040a'); sky.addColorStop(0.7, '#0f0e1c'); sky.addColorStop(1, '#1c1522'); g.fillStyle = sky; g.fillRect(-160, -80, 1280, 560);
     for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(220,225,255,${0.25 + 0.55 * hash(i, 7) * (0.6 + 0.4 * Math.sin(t * 2 + i))})`; g.fillRect(hash(i, 1) * 1180 - 110, hash(i, 2) * 280 - 40, hash(i, 9) < 0.1 ? 2 : 1.2, hash(i, 9) < 0.1 ? 2 : 1.2); }
     g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_BULB, 800, 70, 120, 0.6); g.restore();
@@ -4178,7 +4354,7 @@
     const FX = 520, FY = 444, fl = 0.85 + 0.15 * Math.sin(t * 9) * Math.sin(t * 5.3);
     // the dead, held back at the edge of the firelight
     for (let k = 0; k < 5; k++) {
-      const lunge = k === 0 ? Math.pow(Math.max(0, Math.sin(t * 0.8)), 10) * 70 : 0;
+      const lunge = k === 0 ? Math.max(Math.pow(Math.max(0, Math.sin(t * 0.8)), 10) * 70, Q.t < CP_INTRO ? Math.pow(Math.sin(clamp01((Q.t - 5.3) / 1.2) * Math.PI), 2) * 100 : 0) : 0;
       const side = k % 2 ? 1 : -1, zx = FX + side * (330 + k * 55 - lunge) + Math.sin(t * 0.7 + k * 2) * 14, zy = 410 + k * 6, bb = Math.abs(Math.sin(t * 1.4 + k)) * 2;
       g.fillStyle = '#030304'; g.beginPath(); g.ellipse(zx, zy - 30 + bb, 9, 18, 0.15 * side, 0, 7); g.fill(); g.beginPath(); g.arc(zx - side * 3, zy - 54 + bb, 7, 0, 7); g.fill();
       g.strokeStyle = '#030304'; g.lineWidth = 4; g.lineCap = 'round'; g.beginPath(); g.moveTo(zx - side * 4, zy - 42 + bb); g.lineTo(zx - side * 26, zy - 44 + Math.sin(t * 2 + k) * 4); g.moveTo(zx - 3, zy - 14); g.lineTo(zx - 5 + Math.sin(t * 1.4 + k) * 4, zy); g.moveTo(zx + 3, zy - 14); g.lineTo(zx + 5 - Math.sin(t * 1.4 + k) * 4, zy); g.stroke();
@@ -4208,17 +4384,24 @@
     // the burst of sparks as it catches
     if (Q.t > 0.45 && Q.t < 2.2) { const q = (Q.t - 0.45) / 1.75; g.save(); g.globalCompositeOperation = 'lighter'; for (let j = 0; j < 40; j++) { const a = -Math.PI * (0.05 + hash(j, 81) * 0.9), v = 120 + hash(j, 82) * 260; g.fillStyle = `rgba(255,${170 + (j % 3) * 30},90,${1 - q})`; g.fillRect(FX + Math.cos(a) * v * q, FY - 10 + Math.sin(a) * v * q + 140 * q * q, 2.5, 2.5); } stamp(g, ST_WARM, FX, FY - 20, 120 * (1 - q) + 40, (1 - q) * 1.4); g.restore(); }
     for (let j = 0; j < 28; j++) { const p = (t * 0.33 + j * 0.071) % 1; g.fillStyle = `rgba(255,${150 + (j % 3) * 30},70,${1 - p})`; g.fillRect(FX + Math.sin(j * 7 + t * 2) * 30 * p + p * 20, FY - 20 - p * 260, 2, 2); }
-    // you, with what you found floating in the firelight, sparkling
-    drawMenuHero(t);
-    const hb = walk > 0.02 ? -Math.abs(Math.sin(t * 9)) * 5 * walk : 0;
-    g.save(); g.translate(FX - 150 - walk * 260, FY + 8 + hb); g.scale(-0.85, 0.85); g.drawImage(MENU.hero, -180, -318); g.restore();
-    const ix = FX - 92, iy = FY - 124 + Math.sin(t * 2) * 4 + (1 - itemK) * 40;
-    if (itemK > 0) { g.save(); g.globalCompositeOperation = 'lighter'; for (let r = 0; r < 10; r++) { const a = t * 0.35 + r * 0.628, L2 = (70 + 20 * Math.sin(t * 2 + r)) * itemK; g.fillStyle = `rgba(255,225,160,${0.07 * itemK})`; g.beginPath(); g.moveTo(ix, iy); g.lineTo(ix + Math.cos(a - 0.09) * L2, iy + Math.sin(a - 0.09) * L2); g.lineTo(ix + Math.cos(a + 0.09) * L2, iy + Math.sin(a + 0.09) * L2); g.closePath(); g.fill(); } g.restore(); }
-    g.save(); g.globalAlpha = itemK; g.globalCompositeOperation = 'lighter'; stamp(g, ST_WARM, ix, iy, 40 + Math.sin(t * 3) * 4, 0.7);
-    for (let k = 0; k < 8; k++) { const a = t * 1.4 + k * 0.785, r = 26 + Math.sin(t * 2 + k) * 4; g.fillStyle = `rgba(255,240,200,${0.5 + 0.5 * Math.sin(t * 5 + k)})`; g.fillRect(ix + Math.cos(a) * r, iy + Math.sin(a) * r * 0.6, 2, 2); }
-    g.restore();
-    g.globalAlpha = 1;
-    if (itemK > 0) { g.save(); g.globalAlpha = itemK; g.translate(ix, iy); g.scale(0.6 + 0.4 * itemK, 0.6 + 0.4 * itemK); g.rotate(Math.sin(t * 1.3) * 0.12); drawClueItem(g, Q.cp, 0, 0, t); g.restore(); }
+    // what glints in the grass before he picks it up
+    if (P.hold < 0.5 && !Q.out) { const [gx0, gy0] = CP_ITEM, gl = 0.5 + 0.5 * Math.sin(t * 4);
+      g.save(); g.translate(gx0, gy0); g.rotate(0.5); g.scale(0.5, 0.5); drawClueItem(g, Q.cp, 0, 0, t); g.restore();
+      g.save(); g.globalCompositeOperation = 'lighter'; stamp(g, ST_WARM, gx0, gy0, 18 + gl * 10, 0.5 + gl * 0.4);
+      g.fillStyle = `rgba(255,245,210,${gl})`; g.fillRect(gx0 - 7 - gl * 4, gy0 - 1, 14 + gl * 8, 2); g.fillRect(gx0 - 1, gy0 - 7 - gl * 4, 2, 14 + gl * 8); g.restore(); }
+    // you, acting it out
+    g.fillStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.ellipse(P.x - 26, 452, 64, 6, 0, 0, 7); g.fill();
+    const A = drawActor(P, t, Q.cp), hwx = P.x + A.hand[0] * 0.85 + 4, hwy = 452 + A.hand[1] * 0.85 - 4;
+    g.drawImage(ACT, P.x - 153, 452 - 270.3, 306, 280.5);
+    // the moment he turns it over in the firelight: rays, a glow, sparkles
+    const itemK = P.hold < 0.5 ? 0 : intro ? clamp01((Q.t - 4.25) / 0.45) * (1 - clamp01((Q.t - 5.45) / 0.3)) : L && CP_LOOK.has(Q.cp + ':' + Q.line) ? 0.6 * talkK : 0;
+    if (itemK > 0) {
+      g.save(); g.globalCompositeOperation = 'lighter';
+      for (let r = 0; r < 10; r++) { const a = t * 0.35 + r * 0.628, L2 = (50 + 16 * Math.sin(t * 2 + r)) * itemK; g.fillStyle = `rgba(255,225,160,${0.08 * itemK})`; g.beginPath(); g.moveTo(hwx, hwy); g.lineTo(hwx + Math.cos(a - 0.09) * L2, hwy + Math.sin(a - 0.09) * L2); g.lineTo(hwx + Math.cos(a + 0.09) * L2, hwy + Math.sin(a + 0.09) * L2); g.closePath(); g.fill(); }
+      stamp(g, ST_WARM, hwx, hwy, 30 + Math.sin(t * 3) * 3, 0.6 * itemK);
+      for (let k = 0; k < 8; k++) { const a = t * 1.4 + k * 0.785, r = 20 + Math.sin(t * 2 + k) * 3; g.fillStyle = `rgba(255,240,200,${(0.5 + 0.5 * Math.sin(t * 5 + k)) * itemK})`; g.fillRect(hwx + Math.cos(a) * r, hwy + Math.sin(a) * r * 0.6, 1.6, 1.6); }
+      g.restore();
+    }
     // grass in the foreground, bending in the wind
     g.strokeStyle = '#070605'; g.lineWidth = 2; g.lineCap = 'round'; g.beginPath();
     for (let i = 0; i < 80; i++) { const x = i * 14 - 120 + hash(i, 11) * 8, h = 10 + hash(i, 12) * 18, sw = Math.sin(t * 1.5 + x * 0.02) * 5 * gust; g.moveTo(x, 482); g.quadraticCurveTo(x + sw * 0.5, 482 - h * 0.5, x + sw + 3, 482 - h); }
@@ -4233,7 +4416,7 @@
       g.fillStyle = 'rgba(0,0,0,.08)'; for (let yy = (t * 40) % 4; yy < H; yy += 4) g.fillRect(0, yy, W, 1);
     }
     if (Q.t < 0.6) { g.fillStyle = `rgba(0,0,0,${1 - Q.t / 0.6})`; g.fillRect(0, 0, W, H); }
-    if (outK > 0) { g.fillStyle = `rgba(0,0,0,${clamp01((Q.out - 0.5) / 0.9)})`; g.fillRect(0, 0, W, H); }
+    if (outK > 0) { g.fillStyle = `rgba(0,0,0,${clamp01((Q.out - 1.2) / 1.0)})`; g.fillRect(0, 0, W, H); }
     if (!TOUCH && POST.grain) { g.save(); g.globalAlpha = 0.05; g.translate(-Math.random() * 256, -Math.random() * 256); g.fillStyle = POST.grain; g.fillRect(0, 0, W + 256, H + 256); g.restore(); }
     // letterbox, the mark's name burning in, the dialogue with a portrait
     const bh = Math.min(70, H * 0.09), base = Math.min(W, H); g.fillStyle = '#000'; g.fillRect(0, 0, W, bh); g.fillRect(0, H - bh, W, bh);
@@ -4245,7 +4428,7 @@
     { const NAME = CLUES[Q.cp].name, sz = Math.round(base * 0.075); g.font = `400 ${sz}px "Pirata One", Georgia, serif`; g.textAlign = 'left';
       const full = g.measureText(NAME).width; let lx = W / 2 - full / 2;
       for (let i = 0; i < NAME.length; i++) {
-        const ch = NAME[i], cw = g.measureText(ch).width, lt = Q.t - 1.2 - i * 0.045;
+        const ch = NAME[i], cw = g.measureText(ch).width, lt = Q.t - 4.45 - i * 0.045;
         if (lt > 0) { const pop = Math.max(0, 1 - lt / 0.2); g.save(); g.translate(lx + cw / 2, bh + base * 0.13 - pop * 14); g.scale(1 + pop * 0.9, 1 + pop * 0.9); g.globalAlpha = titleA * Math.min(1, lt / 0.1);
           g.fillStyle = '#2a0808'; g.fillText(ch, -cw / 2 + 2, 3); g.fillStyle = pop > 0.3 ? '#fff3c4' : '#e9b949'; g.fillText(ch, -cw / 2, 0);
           if (pop > 0) { g.globalCompositeOperation = 'lighter'; stamp(g, ST_WARM, 0, 0, sz * 0.5 * pop + 8, pop); g.globalCompositeOperation = 'source-over'; }
@@ -4254,7 +4437,7 @@
       }
       g.textAlign = 'center'; }
     g.globalAlpha = 1;
-    if (outK > 0.35) { g.globalAlpha = clamp01((Q.out - 0.7) / 0.5); g.font = `400 ${Math.round(base * 0.05)}px "Pirata One", Georgia, serif`; g.fillStyle = '#e9b949'; g.fillText(Q.cp < CLUES.length - 1 ? 'Descansas junto al fuego…' : 'El hospital te espera…', W / 2, H / 2); g.globalAlpha = 1; }
+    if (Q.out > 1.1) { g.globalAlpha = clamp01((Q.out - 1.1) / 0.5); g.font = `400 ${Math.round(base * 0.05)}px "Pirata One", Georgia, serif`; g.fillStyle = '#e9b949'; g.fillText(Q.cp < CLUES.length - 1 ? 'Descansas junto al fuego…' : 'El hospital te espera…', W / 2, H / 2); g.globalAlpha = 1; }
     if (intro && Q.t > 1.4) { g.globalAlpha = 0.5; g.font = '400 10px "IBM Plex Mono", monospace'; g.fillStyle = '#efe6d4'; g.fillText(TOUCH ? 'toca para seguir' : 'clic o Espacio para seguir', W / 2, H - bh / 2); g.globalAlpha = 1; }
     if (L) {
       const [who, col] = CP_WHO[L[0]], n = Math.min(L[1].length, Math.floor(Q.lt * 38)), w = Math.min(W - 32, 760), h = 92, x = (W - w) / 2, y = H - bh - h - 12;
@@ -7408,6 +7591,3 @@
   requestAnimationFrame(frame);
 })();
 </script>
-
-</body>
-</html>
